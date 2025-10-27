@@ -1,9 +1,16 @@
 import { createHash, randomBytes } from "crypto";
 
-const PKCE_CODE_VERIFIER_MIN_LENGTH = 43;
-const PKCE_CODE_VERIFIER_MAX_LENGTH = 128;
-const PKCE_DEFAULT_VERIFIER_LENGTH = 96;
-const SPOTIFY_AUTHORIZE_ENDPOINT = "https://accounts.spotify.com/authorize";
+export const PKCE_CODE_VERIFIER_MIN_LENGTH = 43;
+export const PKCE_CODE_VERIFIER_MAX_LENGTH = 128;
+export const PKCE_DEFAULT_VERIFIER_LENGTH = 96;
+export const SPOTIFY_AUTHORIZE_ENDPOINT = "https://accounts.spotify.com/authorize";
+export const SPOTIFY_TOKEN_ENDPOINT = "https://accounts.spotify.com/api/token";
+
+export const SPOTIFY_COOKIE_KEYS = {
+  pkceVerifier: "spm_pkce_verifier",
+  oauthState: "spm_oauth_state",
+  tokens: "spm_tokens",
+} as const;
 
 export const DEFAULT_SPOTIFY_SCOPES: string[] = [
   "user-library-read",
