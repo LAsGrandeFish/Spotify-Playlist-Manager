@@ -2,6 +2,10 @@ import { NextRequest, NextResponse } from "next/server";
 
 import { isDevelopment, spotifyEnv } from "@/lib/env";
 import { SPOTIFY_COOKIE_KEYS, SPOTIFY_TOKEN_ENDPOINT } from "@/lib/spotify/auth";
+import {
+  calculateSpotifyExpiryTimestamp,
+  serializeSpotifyTokenPayload,
+} from "@/lib/spotify/session";
 
 const THIRTY_DAYS_IN_SECONDS = 60 * 60 * 24 * 30;
 
@@ -79,27 +83,23 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     const { access_token, refresh_token, token_type, scope, expires_in }: SpotifyTokenResponse =
       await tokenResponse.json();
 
-    const expiresAt = Date.now() + expires_in * 1000;
+    const tokenCookiePayload = serializeSpotifyTokenPayload({
+      accessToken: access_token,
+      refreshToken: refresh_token ?? null,
+      tokenType: token_type,
+      scope,
+      expiresAt: calculateSpotifyExpiryTimestamp(expires_in),
+    });
 
     const response = NextResponse.redirect(new URL("/", request.url));
 
-    response.cookies.set(
-      SPOTIFY_COOKIE_KEYS.tokens,
-      JSON.stringify({
-        accessToken: access_token,
-        refreshToken: refresh_token ?? null,
-        tokenType: token_type,
-        scope,
-        expiresAt,
-      }),
-      {
-        httpOnly: true,
-        secure: !isDevelopment(),
-        sameSite: "lax",
-        path: "/",
-        maxAge: THIRTY_DAYS_IN_SECONDS,
-      },
-    );
+    response.cookies.set(SPOTIFY_COOKIE_KEYS.tokens, tokenCookiePayload, {
+      httpOnly: true,
+      secure: !isDevelopment(),
+      sameSite: "lax",
+      path: "/",
+      maxAge: THIRTY_DAYS_IN_SECONDS,
+    });
 
     response.cookies.delete(SPOTIFY_COOKIE_KEYS.oauthState);
     response.cookies.delete(SPOTIFY_COOKIE_KEYS.pkceVerifier);
