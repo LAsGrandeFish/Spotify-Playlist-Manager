@@ -1,4 +1,59 @@
-export default function Home() {
+import Image from "next/image";
+import Link from "next/link";
+import { cookies } from "next/headers";
+
+import { SPOTIFY_COOKIE_KEYS } from "@/lib/spotify/auth";
+import { fetchSpotifyCurrentUser, SpotifyCurrentUser } from "@/lib/spotify/api";
+import { ensureSpotifyTokens, parseSpotifyTokenPayload } from "@/lib/spotify/session";
+
+type SpotifyAuthState = {
+  authenticated: boolean;
+  profile: SpotifyCurrentUser | null;
+  error: string | null;
+};
+
+async function resolveSpotifyAuthState(): Promise<SpotifyAuthState> {
+  const cookieStore = await cookies();
+  const rawToken = cookieStore.get(SPOTIFY_COOKIE_KEYS.tokens)?.value;
+  const parsedToken = parseSpotifyTokenPayload(rawToken);
+
+  if (!parsedToken) {
+    return { authenticated: false, profile: null, error: null };
+  }
+
+  const refreshedTokens = await ensureSpotifyTokens(parsedToken);
+
+  if (!refreshedTokens) {
+    return {
+      authenticated: false,
+      profile: null,
+      error: "Spotify session expired. Please log in again.",
+    };
+  }
+
+  try {
+    const profile = await fetchSpotifyCurrentUser(refreshedTokens.accessToken);
+
+    return {
+      authenticated: true,
+      profile,
+      error: null,
+    };
+  } catch (error) {
+    console.error("Failed to fetch Spotify profile:", error);
+    return {
+      authenticated: false,
+      profile: null,
+      error: "Unable to load Spotify profile. Please log in again.",
+    };
+  }
+}
+
+export default async function Home() {
+  const authState = await resolveSpotifyAuthState();
+  const primaryAvatar = authState.profile?.images?.[0]?.url ?? null;
+  const displayName = authState.profile?.display_name || authState.profile?.id || "Spotify user";
+
   return (
     <main className="mx-auto flex min-h-screen max-w-5xl flex-col gap-12 px-6 pb-16 pt-24 font-sans sm:px-12 lg:px-20">
       <section className="flex flex-col gap-6">
@@ -12,7 +67,7 @@ export default function Home() {
           Review tracks in rapid batches, queue playlist actions, and confirm once when you are
           ready. Built for power users who live inside playlists and crave snappy tooling.
         </p>
-        <div className="flex flex-wrap gap-2 text-sm text-zinc-600 dark:text-zinc-400">
+        <div className="flex flex-wrap items-center gap-3 text-sm text-zinc-600 dark:text-zinc-400">
           <span className="rounded-full border border-zinc-200 px-3 py-1 dark:border-zinc-700">
             App Router + TypeScript
           </span>
@@ -22,6 +77,73 @@ export default function Home() {
           <span className="rounded-full border border-zinc-200 px-3 py-1 dark:border-zinc-700">
             OAuth + Spotify Web API
           </span>
+        </div>
+
+        <div className="mt-6 flex flex-col gap-4 rounded-2xl border border-zinc-200 bg-white/60 p-6 text-sm shadow-sm backdrop-blur dark:border-zinc-800 dark:bg-zinc-900/60 dark:text-zinc-200">
+          {authState.authenticated ? (
+            <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+              <div className="flex items-center gap-4">
+                {primaryAvatar ? (
+                  <span className="relative h-12 w-12 overflow-hidden rounded-full border border-emerald-200 dark:border-emerald-700/60">
+                    <Image
+                      src={primaryAvatar}
+                      alt={`${displayName} avatar`}
+                      fill
+                      sizes="48px"
+                      className="object-cover"
+                    />
+                  </span>
+                ) : (
+                  <span className="flex h-12 w-12 items-center justify-center rounded-full border border-emerald-200 bg-emerald-100 text-sm font-semibold text-emerald-800 dark:border-emerald-700/60 dark:bg-emerald-900/40 dark:text-emerald-200">
+                    {displayName.charAt(0).toUpperCase()}
+                  </span>
+                )}
+                <div className="flex flex-col">
+                  <span className="text-xs uppercase tracking-wide text-emerald-500">
+                    Connected to Spotify
+                  </span>
+                  <span className="text-base font-semibold text-zinc-900 dark:text-zinc-50">
+                    {displayName}
+                  </span>
+                  {authState.profile?.email ? (
+                    <span className="text-xs text-zinc-500 dark:text-zinc-400">
+                      {authState.profile.email}
+                    </span>
+                  ) : null}
+                </div>
+              </div>
+              <form action="/api/auth/logout" method="post">
+                <button
+                  type="submit"
+                  className="inline-flex items-center justify-center gap-2 rounded-full border border-emerald-200 px-4 py-2 text-sm font-medium text-emerald-700 transition hover:border-emerald-300 hover:bg-emerald-50 dark:border-emerald-700/60 dark:text-emerald-200 dark:hover:bg-emerald-900/40"
+                >
+                  Log out
+                </button>
+              </form>
+            </div>
+          ) : (
+            <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+              <div className="space-y-1">
+                <p className="text-base font-medium text-zinc-900 dark:text-zinc-50">
+                  Connect your Spotify account to begin testing.
+                </p>
+                <p className="text-xs text-zinc-600 dark:text-zinc-400">
+                  We store tokens in http-only cookies and auto-refresh them when they near expiry.
+                </p>
+                {authState.error ? (
+                  <p className="text-xs font-medium text-amber-600 dark:text-amber-400">
+                    {authState.error}
+                  </p>
+                ) : null}
+              </div>
+              <Link
+                href="/api/auth/login"
+                className="inline-flex items-center justify-center gap-2 rounded-full bg-emerald-600 px-5 py-2 text-sm font-semibold text-white transition hover:bg-emerald-500"
+              >
+                Log in with Spotify
+              </Link>
+            </div>
+          )}
         </div>
       </section>
 

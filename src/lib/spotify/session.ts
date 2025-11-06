@@ -2,6 +2,7 @@ import { spotifyEnv } from "@/lib/env";
 import { SPOTIFY_COOKIE_KEYS, SPOTIFY_TOKEN_ENDPOINT } from "@/lib/spotify/auth";
 
 export const TOKEN_REFRESH_BUFFER_MS = 60_000; // 1 minute
+export const SPOTIFY_SESSION_MAX_AGE_SECONDS = 60 * 60 * 24 * 30;
 
 export type SpotifyTokenPayload = {
   accessToken: string;

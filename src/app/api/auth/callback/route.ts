@@ -3,11 +3,10 @@ import { NextRequest, NextResponse } from "next/server";
 import { isDevelopment, spotifyEnv } from "@/lib/env";
 import { SPOTIFY_COOKIE_KEYS, SPOTIFY_TOKEN_ENDPOINT } from "@/lib/spotify/auth";
 import {
+  SPOTIFY_SESSION_MAX_AGE_SECONDS,
   calculateSpotifyExpiryTimestamp,
   serializeSpotifyTokenPayload,
 } from "@/lib/spotify/session";
-
-const THIRTY_DAYS_IN_SECONDS = 60 * 60 * 24 * 30;
 
 type SpotifyTokenResponse = {
   access_token: string;
@@ -98,7 +97,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       secure: !isDevelopment(),
       sameSite: "lax",
       path: "/",
-      maxAge: THIRTY_DAYS_IN_SECONDS,
+      maxAge: SPOTIFY_SESSION_MAX_AGE_SECONDS,
     });
 
     response.cookies.delete(SPOTIFY_COOKIE_KEYS.oauthState);
