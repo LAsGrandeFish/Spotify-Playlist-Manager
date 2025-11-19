@@ -2,13 +2,22 @@ import Image from "next/image";
 import Link from "next/link";
 import { cookies } from "next/headers";
 
+import PlaylistRail from "@/app/_components/library/playlist-rail";
+import ReviewQueue from "@/app/_components/review/review-queue";
 import { SPOTIFY_COOKIE_KEYS } from "@/lib/spotify/auth";
-import { fetchSpotifyCurrentUser, SpotifyCurrentUser } from "@/lib/spotify/api";
-import { ensureSpotifyTokens, parseSpotifyTokenPayload } from "@/lib/spotify/session";
+import { fetchSpotifyCurrentUser, type SpotifyCurrentUser } from "@/lib/spotify/api";
+import { fetchPlaylistRailData, type PlaylistRailData } from "@/lib/spotify/library";
+import { fetchQueueData, type QueueData } from "@/lib/spotify/queue";
+import {
+  ensureSpotifyTokens,
+  parseSpotifyTokenPayload,
+  type SpotifyTokenPayload,
+} from "@/lib/spotify/session";
 
 type SpotifyAuthState = {
   authenticated: boolean;
   profile: SpotifyCurrentUser | null;
+  tokens: SpotifyTokenPayload | null;
   error: string | null;
 };
 
@@ -18,7 +27,7 @@ async function resolveSpotifyAuthState(): Promise<SpotifyAuthState> {
   const parsedToken = parseSpotifyTokenPayload(rawToken);
 
   if (!parsedToken) {
-    return { authenticated: false, profile: null, error: null };
+    return { authenticated: false, profile: null, tokens: null, error: null };
   }
 
   const refreshedTokens = await ensureSpotifyTokens(parsedToken);
@@ -27,6 +36,7 @@ async function resolveSpotifyAuthState(): Promise<SpotifyAuthState> {
     return {
       authenticated: false,
       profile: null,
+      tokens: null,
       error: "Spotify session expired. Please log in again.",
     };
   }
@@ -37,6 +47,7 @@ async function resolveSpotifyAuthState(): Promise<SpotifyAuthState> {
     return {
       authenticated: true,
       profile,
+      tokens: refreshedTokens,
       error: null,
     };
   } catch (error) {
@@ -44,6 +55,7 @@ async function resolveSpotifyAuthState(): Promise<SpotifyAuthState> {
     return {
       authenticated: false,
       profile: null,
+      tokens: null,
       error: "Unable to load Spotify profile. Please log in again.",
     };
   }
@@ -53,145 +65,144 @@ export default async function Home() {
   const authState = await resolveSpotifyAuthState();
   const primaryAvatar = authState.profile?.images?.[0]?.url ?? null;
   const displayName = authState.profile?.display_name || authState.profile?.id || "Spotify user";
+  const userInitial = displayName.charAt(0).toUpperCase();
 
-  return (
-    <main className="mx-auto flex min-h-screen max-w-5xl flex-col gap-12 px-6 pb-16 pt-24 font-sans sm:px-12 lg:px-20">
-      <section className="flex flex-col gap-6">
-        <span className="w-fit rounded-full bg-emerald-100 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300">
-          Spotify Playlist Manager
-        </span>
-        <h1 className="text-4xl font-semibold tracking-tight sm:text-5xl">
-          Keyboard-first triage for massive Spotify libraries.
-        </h1>
-        <p className="max-w-2xl text-lg text-zinc-600 dark:text-zinc-400">
-          Review tracks in rapid batches, queue playlist actions, and confirm once when you are
-          ready. Built for power users who live inside playlists and crave snappy tooling.
-        </p>
-        <div className="flex flex-wrap items-center gap-3 text-sm text-zinc-600 dark:text-zinc-400">
-          <span className="rounded-full border border-zinc-200 px-3 py-1 dark:border-zinc-700">
-            App Router + TypeScript
-          </span>
-          <span className="rounded-full border border-zinc-200 px-3 py-1 dark:border-zinc-700">
-            Tailwind UI primitives
-          </span>
-          <span className="rounded-full border border-zinc-200 px-3 py-1 dark:border-zinc-700">
-            OAuth + Spotify Web API
-          </span>
-        </div>
+  let playlistRailData: PlaylistRailData | null = null;
+  let playlistRailError: string | null = null;
+  let queueData: QueueData | null = null;
+  let queueError: string | null = null;
 
-        <div className="mt-6 flex flex-col gap-4 rounded-2xl border border-zinc-200 bg-white/60 p-6 text-sm shadow-sm backdrop-blur dark:border-zinc-800 dark:bg-zinc-900/60 dark:text-zinc-200">
-          {authState.authenticated ? (
-            <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-              <div className="flex items-center gap-4">
-                {primaryAvatar ? (
-                  <span className="relative h-12 w-12 overflow-hidden rounded-full border border-emerald-200 dark:border-emerald-700/60">
-                    <Image
-                      src={primaryAvatar}
-                      alt={`${displayName} avatar`}
-                      fill
-                      sizes="48px"
-                      className="object-cover"
-                    />
-                  </span>
-                ) : (
-                  <span className="flex h-12 w-12 items-center justify-center rounded-full border border-emerald-200 bg-emerald-100 text-sm font-semibold text-emerald-800 dark:border-emerald-700/60 dark:bg-emerald-900/40 dark:text-emerald-200">
-                    {displayName.charAt(0).toUpperCase()}
-                  </span>
-                )}
-                <div className="flex flex-col">
-                  <span className="text-xs uppercase tracking-wide text-emerald-500">
-                    Connected to Spotify
-                  </span>
-                  <span className="text-base font-semibold text-zinc-900 dark:text-zinc-50">
-                    {displayName}
-                  </span>
-                  {authState.profile?.email ? (
-                    <span className="text-xs text-zinc-500 dark:text-zinc-400">
-                      {authState.profile.email}
-                    </span>
-                  ) : null}
-                </div>
+  if (authState.authenticated && authState.tokens) {
+    try {
+      const [rail, queue] = await Promise.all([
+        fetchPlaylistRailData(authState.tokens.accessToken),
+        fetchQueueData(authState.tokens.accessToken, { type: "liked" }),
+      ]);
+      playlistRailData = rail;
+      queueData = queue;
+    } catch (error) {
+      console.error("Failed to load playlists or queue:", error);
+      playlistRailError = "Could not load playlists from Spotify.";
+      queueError = "Unable to fetch tracks for the selected source.";
+    }
+  }
+
+  if (authState.authenticated) {
+    return (
+      <main className="flex min-h-screen flex-col items-center py-10 font-sans">
+        <div className="w-full max-w-6xl rounded-[36px] border border-black/50 bg-[#050505] p-6 text-white shadow-[0_35px_80px_rgba(0,0,0,0.55)]">
+          <header className="flex items-center justify-between rounded-2xl border border-[#101010] bg-[#0b0b0b] px-4 py-3">
+            <div className="flex items-center gap-3">
+              <span className="flex h-11 w-11 items-center justify-center rounded-2xl bg-emerald-500 text-lg font-semibold text-black">
+                ♫
+              </span>
+              <div>
+                <p className="text-xs uppercase tracking-[0.2em] text-zinc-500">Spotify</p>
+                <p className="text-2xl font-semibold tracking-tight text-white">Library Manager</p>
               </div>
+            </div>
+            <div className="flex items-center gap-4">
+              <div className="text-right">
+                <p className="text-sm font-semibold text-white">{displayName}</p>
+                {authState.profile?.email ? (
+                  <p className="text-xs text-zinc-500">{authState.profile.email}</p>
+                ) : (
+                  <p className="text-xs text-zinc-500">Online</p>
+                )}
+              </div>
+              {primaryAvatar ? (
+                <span className="relative h-10 w-10 overflow-hidden rounded-full border border-emerald-500/40">
+                  <Image
+                    src={primaryAvatar}
+                    alt={`${displayName} avatar`}
+                    fill
+                    className="object-cover"
+                  />
+                </span>
+              ) : (
+                <span className="flex h-10 w-10 items-center justify-center rounded-full border border-emerald-500/60 bg-emerald-600/30 text-sm font-semibold text-emerald-200">
+                  {userInitial}
+                </span>
+              )}
               <form action="/api/auth/logout" method="post">
                 <button
                   type="submit"
-                  className="inline-flex items-center justify-center gap-2 rounded-full border border-emerald-200 px-4 py-2 text-sm font-medium text-emerald-700 transition hover:border-emerald-300 hover:bg-emerald-50 dark:border-emerald-700/60 dark:text-emerald-200 dark:hover:bg-emerald-900/40"
+                  className="rounded-full border border-zinc-700 px-4 py-1.5 text-xs font-semibold uppercase tracking-wide text-zinc-300 transition hover:border-emerald-500 hover:text-white"
                 >
                   Log out
                 </button>
               </form>
             </div>
-          ) : (
-            <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-              <div className="space-y-1">
-                <p className="text-base font-medium text-zinc-900 dark:text-zinc-50">
-                  Connect your Spotify account to begin testing.
-                </p>
-                <p className="text-xs text-zinc-600 dark:text-zinc-400">
-                  We store tokens in http-only cookies and auto-refresh them when they near expiry.
-                </p>
-                {authState.error ? (
-                  <p className="text-xs font-medium text-amber-600 dark:text-amber-400">
-                    {authState.error}
-                  </p>
-                ) : null}
-              </div>
-              <Link
-                href="/api/auth/login"
-                className="inline-flex items-center justify-center gap-2 rounded-full bg-emerald-600 px-5 py-2 text-sm font-semibold text-white transition hover:bg-emerald-500"
-              >
-                Log in with Spotify
-              </Link>
+          </header>
+          <div className="mt-6 grid gap-5 lg:grid-cols-[280px_1fr]">
+            <div
+              className="self-start lg:sticky lg:top-24 lg:w-[260px]"
+              style={{ maxHeight: "80vh" }}
+            >
+              <PlaylistRail
+                data={playlistRailData}
+                isAuthenticated={authState.authenticated}
+                error={playlistRailError}
+                appearance="workspace"
+              />
             </div>
-          )}
+            <ReviewQueue
+              data={queueData}
+              isAuthenticated={authState.authenticated}
+              error={queueError}
+              appearance="workspace"
+            />
+          </div>
         </div>
-      </section>
+      </main>
+    );
+  }
 
-      <section className="grid gap-8 md:grid-cols-[1.5fr_1fr]">
-        <div className="flex flex-col gap-4 rounded-2xl border border-zinc-200 bg-white/60 p-6 shadow-sm backdrop-blur dark:border-zinc-800 dark:bg-zinc-900/60">
-          <h2 className="text-xl font-semibold">Next up</h2>
-          <ul className="space-y-3 text-sm text-zinc-600 dark:text-zinc-300">
-            <li className="flex items-start gap-3">
-              <span className="mt-0.5 h-2 w-2 rounded-full bg-emerald-500" />
-              Wire up Spotify OAuth (PKCE) and token refresh flow.
-            </li>
-            <li className="flex items-start gap-3">
-              <span className="mt-0.5 h-2 w-2 rounded-full bg-emerald-500" />
-              Render the playlist rail with liked songs and quick filters.
-            </li>
-            <li className="flex items-start gap-3">
-              <span className="mt-0.5 h-2 w-2 rounded-full bg-emerald-500" />
-              Prototype the review queue with virtualization + hotkeys.
-            </li>
-          </ul>
+  return (
+    <main className="mx-auto flex min-h-screen max-w-5xl flex-col gap-12 px-6 pb-16 pt-24 font-sans sm:px-12 lg:px-20">
+      <section className="flex flex-col gap-6">
+        <span className="w-fit rounded-full bg-emerald-100 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-emerald-700">
+          Spotify Playlist Manager
+        </span>
+        <h1 className="text-4xl font-semibold tracking-tight sm:text-5xl">
+          Keyboard-first triage for massive Spotify libraries.
+        </h1>
+        <p className="max-w-2xl text-lg text-zinc-600">
+          Review tracks in rapid batches, queue playlist actions, and confirm once when you are
+          ready. Built for power users who live inside playlists and crave snappy tooling.
+        </p>
+        <div className="flex flex-wrap items-center gap-3 text-sm text-zinc-600">
+          <span className="rounded-full border border-zinc-200 px-3 py-1">
+            App Router + TypeScript
+          </span>
+          <span className="rounded-full border border-zinc-200 px-3 py-1">
+            Tailwind UI primitives
+          </span>
+          <span className="rounded-full border border-zinc-200 px-3 py-1">
+            OAuth + Spotify Web API
+          </span>
         </div>
-        <div className="flex flex-col gap-4 rounded-2xl border border-dashed border-emerald-400 bg-emerald-50/60 p-6 text-emerald-900 dark:border-emerald-500/50 dark:bg-emerald-900/20 dark:text-emerald-200">
-          <h2 className="text-sm font-semibold uppercase tracking-wide">Core hotkeys</h2>
-          <dl className="grid grid-cols-2 gap-3 text-sm">
-            <div>
-              <dt className="font-mono text-xs">V</dt>
-              <dd className="text-emerald-800 dark:text-emerald-200">Keep track</dd>
+
+        <div className="mt-6 flex flex-col gap-4 rounded-2xl border border-zinc-200 bg-white/60 p-6 text-sm shadow-sm backdrop-blur">
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+            <div className="space-y-1">
+              <p className="text-base font-medium text-zinc-900">
+                Connect your Spotify account to begin testing.
+              </p>
+              <p className="text-xs text-zinc-600">
+                We store tokens in http-only cookies and auto-refresh them when they near expiry.
+              </p>
+              {authState.error ? (
+                <p className="text-xs font-medium text-amber-600">{authState.error}</p>
+              ) : null}
             </div>
-            <div>
-              <dt className="font-mono text-xs">R</dt>
-              <dd className="text-emerald-800 dark:text-emerald-200">Remove from queue</dd>
-            </div>
-            <div>
-              <dt className="font-mono text-xs">I</dt>
-              <dd className="text-emerald-800 dark:text-emerald-200">Add to playlist</dd>
-            </div>
-            <div>
-              <dt className="font-mono text-xs">J / K</dt>
-              <dd className="text-emerald-800 dark:text-emerald-200">Navigate tracks</dd>
-            </div>
-            <div>
-              <dt className="font-mono text-xs">Z</dt>
-              <dd className="text-emerald-800 dark:text-emerald-200">Undo last action</dd>
-            </div>
-          </dl>
-          <p className="text-xs text-emerald-700/80 dark:text-emerald-200/70">
-            Confirm batches in one click once all actions look good.
-          </p>
+            <Link
+              href="/api/auth/login"
+              className="inline-flex items-center justify-center gap-2 rounded-full bg-emerald-600 px-5 py-2 text-sm font-semibold text-white transition hover:bg-emerald-500"
+            >
+              Log in with Spotify
+            </Link>
+          </div>
         </div>
       </section>
     </main>
