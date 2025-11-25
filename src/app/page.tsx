@@ -91,7 +91,7 @@ export default async function Home() {
     return (
       <main className="flex min-h-screen flex-col items-center py-10 font-sans">
         <div className="w-full max-w-6xl rounded-[36px] border border-black/50 bg-[#050505] p-6 text-white shadow-[0_35px_80px_rgba(0,0,0,0.55)]">
-          <header className="px-8 flex items-center justify-between rounded-2xl border border-[#101010] bg-[#0f766e]">
+          <header className="px-4 py-2 flex items-center justify-between rounded-2xl border border-[#101010] bg-[#0f766e]">
             <div className="flex items-center gap-[16px]">
               <span className="flex h-11 w-11 items-center justify-center rounded-2xl bg-emerald-500 text-lg font-semibold text-black">
                 ♫
