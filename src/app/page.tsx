@@ -2,8 +2,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { cookies } from "next/headers";
 
-import PlaylistRail from "@/app/_components/library/playlist-rail";
-import ReviewQueue from "@/app/_components/review/review-queue";
+import WorkspaceShell from "@/app/_components/workspace/workspace-shell";
 import { SPOTIFY_COOKIE_KEYS } from "@/lib/spotify/auth";
 import { fetchSpotifyCurrentUser, type SpotifyCurrentUser } from "@/lib/spotify/api";
 import { fetchPlaylistRailData, type PlaylistRailData } from "@/lib/spotify/library";
@@ -68,7 +67,6 @@ export default async function Home() {
   const userInitial = displayName.charAt(0).toUpperCase();
 
   let playlistRailData: PlaylistRailData | null = null;
-  let playlistRailError: string | null = null;
   let queueData: QueueData | null = null;
   let queueError: string | null = null;
 
@@ -82,7 +80,6 @@ export default async function Home() {
       queueData = queue;
     } catch (error) {
       console.error("Failed to load playlists or queue:", error);
-      playlistRailError = "Could not load playlists from Spotify.";
       queueError = "Unable to fetch tracks for the selected source.";
     }
   }
@@ -134,25 +131,11 @@ export default async function Home() {
               </form>
             </div>
           </header>
-          <div className="mt-6 grid gap-5 lg:grid-cols-[280px_1fr]">
-            <div
-              className="self-start lg:sticky lg:top-24 lg:w-[260px]"
-              style={{ maxHeight: "80vh" }}
-            >
-              <PlaylistRail
-                data={playlistRailData}
-                isAuthenticated={authState.authenticated}
-                error={playlistRailError}
-                appearance="workspace"
-              />
-            </div>
-            <ReviewQueue
-              data={queueData}
-              isAuthenticated={authState.authenticated}
-              error={queueError}
-              appearance="workspace"
-            />
-          </div>
+          <WorkspaceShell
+            playlistRailData={playlistRailData}
+            initialQueueData={queueData}
+            initialQueueError={queueError}
+          />
         </div>
       </main>
     );
