@@ -23,6 +23,7 @@ export default function WorkspaceShell({
   const [queueData, setQueueData] = useState<QueueData | null>(initialQueueData);
   const [queueError, setQueueError] = useState<string | null>(initialQueueError);
   const [loading, setLoading] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
 
   const activeId = useMemo(() => {
     if (queueData?.source.type === "playlist") return queueData.source.id;
@@ -42,6 +43,7 @@ export default function WorkspaceShell({
             };
 
       setLoading(true);
+      setLoadingMore(false);
       setQueueError(null);
       try {
         const response = await fetch("/api/queue", {
@@ -70,6 +72,47 @@ export default function WorkspaceShell({
     [playlistRailData],
   );
 
+  const handleLoadMore = useCallback(async () => {
+    if (!queueData || queueData.nextOffset == null || loadingMore) return;
+    setLoadingMore(true);
+    setQueueError(null);
+
+    try {
+      const response = await fetch("/api/queue", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          source: queueData.source,
+          offset: queueData.tracks.length,
+        }),
+      });
+
+      if (!response.ok) {
+        const body = await response.json().catch(() => ({}));
+        throw new Error(body?.error || "Failed to load more tracks.");
+      }
+
+      const data: QueueData = await response.json();
+      setQueueData(prev =>
+        prev &&
+        data.source.type === prev.source.type &&
+        JSON.stringify(data.source) === JSON.stringify(prev.source)
+          ? {
+              ...data,
+              tracks: [...prev.tracks, ...data.tracks],
+            }
+          : data,
+      );
+    } catch (error) {
+      console.error("Failed to load more queue items:", error);
+      setQueueError(error instanceof Error ? error.message : "Unable to load more tracks.");
+    } finally {
+      setLoadingMore(false);
+    }
+  }, [queueData, loadingMore]);
+
   return (
     <div className="mt-6 grid gap-5 lg:grid-cols-[280px_1fr]">
       <div className="self-start lg:sticky lg:top-24 lg:w-[260px]" style={{ maxHeight: "80vh" }}>
@@ -85,12 +128,26 @@ export default function WorkspaceShell({
           onSelect={handleSelect}
         />
       </div>
-      <ReviewQueue
-        data={loading ? null : queueData}
-        isAuthenticated
-        error={queueError}
-        appearance="workspace"
-      />
+      <div className="flex flex-col gap-3">
+        <ReviewQueue
+          data={loading ? null : queueData}
+          isAuthenticated
+          error={queueError}
+          appearance="workspace"
+        />
+        {queueData?.nextOffset != null && (
+          <div className="flex justify-center">
+            <button
+              type="button"
+              onClick={handleLoadMore}
+              disabled={loadingMore}
+              className="rounded-full border border-emerald-500/60 bg-emerald-600/20 px-4 py-2 text-sm font-semibold text-emerald-200 transition hover:border-emerald-400 hover:bg-emerald-500/30 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {loadingMore ? "Loading more..." : "Load more tracks"}
+            </button>
+          </div>
+        )}
+      </div>
     </div>
   );
 }

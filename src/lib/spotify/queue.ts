@@ -23,14 +23,17 @@ export type QueueTrack = {
 export type QueueData = {
   source: QueueSource;
   tracks: QueueTrack[];
+  total: number;
+  nextOffset: number | null;
 };
 
 export const fetchQueueData = async (
   accessToken: string,
   source: QueueSource,
+  { offset = 0, limit = 50 }: { offset?: number; limit?: number } = {},
 ): Promise<QueueData> => {
   if (source.type === "liked") {
-    const likedTracks = await fetchSpotifyLikedTracks(accessToken, { limit: 25 });
+    const likedTracks = await fetchSpotifyLikedTracks(accessToken, { limit, offset });
 
     return {
       source,
@@ -43,10 +46,15 @@ export const fetchQueueData = async (
         artworkUrl: item.track.album.images[0]?.url ?? null,
         addedAt: item.added_at,
       })),
+      total: likedTracks.total,
+      nextOffset: likedTracks.next ? offset + likedTracks.items.length : null,
     };
   }
 
-  const playlistTracks = await fetchSpotifyPlaylistTracks(accessToken, source.id, { limit: 25 });
+  const playlistTracks = await fetchSpotifyPlaylistTracks(accessToken, source.id, {
+    limit,
+    offset,
+  });
 
   return {
     source,
@@ -61,6 +69,8 @@ export const fetchQueueData = async (
         artworkUrl: item.track.album.images[0]?.url ?? null,
         addedAt: item.added_at,
       })),
+    total: playlistTracks.total,
+    nextOffset: playlistTracks.next ? offset + playlistTracks.items.length : null,
   };
 };
 

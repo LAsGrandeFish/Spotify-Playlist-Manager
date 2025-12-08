@@ -7,7 +7,11 @@ import { ensureSpotifyTokens, parseSpotifyTokenPayload } from "@/lib/spotify/ses
 
 export async function POST(request: NextRequest) {
   try {
-    const { source } = (await request.json()) as { source?: QueueSource };
+    const { source, offset, limit } = (await request.json()) as {
+      source?: QueueSource;
+      offset?: number;
+      limit?: number;
+    };
 
     if (!source || (source.type === "playlist" && !source.id)) {
       return NextResponse.json({ error: "Missing or invalid queue source." }, { status: 400 });
@@ -26,7 +30,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Spotify session expired." }, { status: 401 });
     }
 
-    const data = await fetchQueueData(refreshedTokens.accessToken, source);
+    const data = await fetchQueueData(refreshedTokens.accessToken, source, { offset, limit });
     return NextResponse.json(data);
   } catch (error) {
     console.error("Queue API error:", error);
