@@ -1,3 +1,5 @@
+"use client";
+
 import ReviewQueueClient from "@/app/_components/review/review-queue-client";
 import type { QueueData } from "@/lib/spotify/queue";
 

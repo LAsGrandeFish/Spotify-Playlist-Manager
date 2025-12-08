@@ -2,8 +2,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { cookies } from "next/headers";
 
-import PlaylistRail from "@/app/_components/library/playlist-rail";
-import ReviewQueue from "@/app/_components/review/review-queue";
+import WorkspaceShell from "@/app/_components/workspace/workspace-shell";
 import { SPOTIFY_COOKIE_KEYS } from "@/lib/spotify/auth";
 import { fetchSpotifyCurrentUser, type SpotifyCurrentUser } from "@/lib/spotify/api";
 import { fetchPlaylistRailData, type PlaylistRailData } from "@/lib/spotify/library";
@@ -68,7 +67,6 @@ export default async function Home() {
   const userInitial = displayName.charAt(0).toUpperCase();
 
   let playlistRailData: PlaylistRailData | null = null;
-  let playlistRailError: string | null = null;
   let queueData: QueueData | null = null;
   let queueError: string | null = null;
 
@@ -82,15 +80,14 @@ export default async function Home() {
       queueData = queue;
     } catch (error) {
       console.error("Failed to load playlists or queue:", error);
-      playlistRailError = "Could not load playlists from Spotify.";
       queueError = "Unable to fetch tracks for the selected source.";
     }
   }
 
   if (authState.authenticated) {
     return (
-      <main className="flex min-h-screen flex-col items-center py-10 font-sans">
-        <div className="w-full max-w-6xl rounded-[36px] border border-black/50 bg-[#050505] p-6 text-white shadow-[0_35px_80px_rgba(0,0,0,0.55)]">
+      <main className="flex min-h-screen flex-col px-6 py-6 font-sans sm:px-8 lg:px-10">
+        <div className="w-full rounded-[36px] border border-black/50 bg-[#050505] p-6 text-white shadow-[0_35px_80px_rgba(0,0,0,0.55)]">
           <header className="px-4 py-2 flex items-center justify-between rounded-2xl border border-[#101010] bg-[#0f766e]">
             <div className="flex items-center gap-[16px]">
               <span className="flex h-11 w-11 items-center justify-center rounded-2xl bg-emerald-500 text-lg font-semibold text-black">
@@ -134,25 +131,11 @@ export default async function Home() {
               </form>
             </div>
           </header>
-          <div className="mt-6 grid gap-5 lg:grid-cols-[280px_1fr]">
-            <div
-              className="self-start lg:sticky lg:top-24 lg:w-[260px]"
-              style={{ maxHeight: "80vh" }}
-            >
-              <PlaylistRail
-                data={playlistRailData}
-                isAuthenticated={authState.authenticated}
-                error={playlistRailError}
-                appearance="workspace"
-              />
-            </div>
-            <ReviewQueue
-              data={queueData}
-              isAuthenticated={authState.authenticated}
-              error={queueError}
-              appearance="workspace"
-            />
-          </div>
+          <WorkspaceShell
+            playlistRailData={playlistRailData}
+            initialQueueData={queueData}
+            initialQueueError={queueError}
+          />
         </div>
       </main>
     );

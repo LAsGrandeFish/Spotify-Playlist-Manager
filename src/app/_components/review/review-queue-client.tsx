@@ -31,6 +31,20 @@ export default function ReviewQueueClient({ tracks, appearance = "card" }: Revie
   const [activeIndex, setActiveIndex] = useState(0);
   const historyRef = useRef<HistoryEntry[]>([]);
 
+  useEffect(() => {
+    // Preserve existing actions when tracks append; reset new ones to pending.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setTrackStates(prev => {
+      const existingActions = new Map(prev.map(track => [track.id, track.action]));
+      return tracks.map(track => ({
+        ...track,
+        action: (existingActions.get(track.id) as TrackAction | undefined) ?? "pending",
+      }));
+    });
+    setActiveIndex(index => Math.min(index, Math.max(tracks.length - 1, 0)));
+    historyRef.current = [];
+  }, [tracks]);
+
   const counts = useMemo(() => {
     return trackStates.reduce(
       (acc, track) => {

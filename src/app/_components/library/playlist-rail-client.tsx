@@ -8,6 +8,8 @@ import clsx from "clsx";
 type PlaylistRailClientProps = {
   data: PlaylistRailData;
   appearance?: "workspace" | "card";
+  activeId?: string;
+  onSelect?: (item: ListItem) => void;
 };
 
 type ListItem =
@@ -55,7 +57,12 @@ const getColorForId = (id: string, index: number) => {
   return colorPalette[hash % colorPalette.length];
 };
 
-export default function PlaylistRailClient({ data, appearance = "card" }: PlaylistRailClientProps) {
+export default function PlaylistRailClient({
+  data,
+  appearance = "card",
+  activeId: controlledActiveId,
+  onSelect,
+}: PlaylistRailClientProps) {
   const isWorkspace = appearance === "workspace";
   const maxHeightClass = isWorkspace ? "max-h-[75vh]" : "max-h-[24rem]";
 
@@ -86,7 +93,8 @@ export default function PlaylistRailClient({ data, appearance = "card" }: Playli
     ];
   }, [data]);
 
-  const [activeId, setActiveId] = useState<string>(DEFAULT_ACTIVE_ID);
+  const [internalActiveId, setInternalActiveId] = useState<string>(DEFAULT_ACTIVE_ID);
+  const activeId = controlledActiveId ?? internalActiveId;
 
   const handleKeyDown = useCallback(
     (event: KeyboardEvent) => {
@@ -100,14 +108,20 @@ export default function PlaylistRailClient({ data, appearance = "card" }: Playli
       if (event.key === "ArrowDown") {
         event.preventDefault();
         const nextItem = items[Math.min(items.length - 1, currentIndex + 1)];
-        setActiveId(nextItem.id);
+        if (!controlledActiveId) {
+          setInternalActiveId(nextItem.id);
+        }
+        onSelect?.(nextItem);
       } else if (event.key === "ArrowUp") {
         event.preventDefault();
         const prevItem = items[Math.max(0, currentIndex - 1)];
-        setActiveId(prevItem.id);
+        if (!controlledActiveId) {
+          setInternalActiveId(prevItem.id);
+        }
+        onSelect?.(prevItem);
       }
     },
-    [activeId, items],
+    [activeId, controlledActiveId, items, onSelect],
   );
 
   useEffect(() => {
@@ -165,7 +179,12 @@ export default function PlaylistRailClient({ data, appearance = "card" }: Playli
               <button
                 key={item.id}
                 type="button"
-                onClick={() => setActiveId(item.id)}
+                onClick={() => {
+                  if (!controlledActiveId) {
+                    setInternalActiveId(item.id);
+                  }
+                  onSelect?.(item);
+                }}
                 className={clsx(
                   "flex w-full items-center gap-4 px-4 py-3 text-left transition",
                   isWorkspace

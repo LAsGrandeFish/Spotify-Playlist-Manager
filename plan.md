@@ -24,3 +24,7 @@
 3. Review page loads queue (virtualized)
 4. Hotkeys V/R/J/K/Z + “Add to playlist” dialog
 5. Batch Confirm (remove/add chunked)
+
+## How to start the app in at the proper port
+
+`npm run dev -- --hostname 127.0.0.1 --port 3000`
