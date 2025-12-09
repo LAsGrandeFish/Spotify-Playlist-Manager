@@ -3,6 +3,7 @@
 import { useCallback, useMemo, useState } from "react";
 
 import PlaylistRailClient from "@/app/_components/library/playlist-rail-client";
+import PlaylistViewer from "@/app/_components/review/playlist-viewer";
 import ReviewQueue from "@/app/_components/review/review-queue";
 import type { PlaylistRailData } from "@/lib/spotify/library";
 import type { QueueData, QueueSource } from "@/lib/spotify/queue";
@@ -24,6 +25,23 @@ export default function WorkspaceShell({
   const [queueError, setQueueError] = useState<string | null>(initialQueueError);
   const [loading, setLoading] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
+  const [mode, setMode] = useState<"view" | "review">("view");
+  const [selectedMeta, setSelectedMeta] = useState<{
+    title: string;
+    total: number;
+    artworkUrl: string | null;
+  }>(() => ({
+    title:
+      initialQueueData?.source.type === "playlist"
+        ? (initialQueueData.source.name ?? "Playlist")
+        : "Liked Songs",
+    total: initialQueueData?.total ?? playlistRailData?.likedSongs?.total ?? 0,
+    artworkUrl:
+      initialQueueData?.source.type === "playlist"
+        ? (playlistRailData?.playlists.find(p => p.id === initialQueueData.source.id)?.images?.[0]
+            ?.url ?? null)
+        : (playlistRailData?.likedSongs?.artwork?.url ?? null),
+  }));
 
   const activeId = useMemo(() => {
     if (queueData?.source.type === "playlist") return queueData.source.id;
@@ -31,7 +49,7 @@ export default function WorkspaceShell({
   }, [queueData]);
 
   const handleSelect = useCallback(
-    async (item: { id: string; type: "liked" | "playlist" }) => {
+    async (item: { id: string; name: string; type: "liked" | "playlist" }) => {
       if (!playlistRailData) return;
 
       const nextSource: QueueSource =
@@ -40,11 +58,29 @@ export default function WorkspaceShell({
           : {
               type: "playlist",
               id: item.id,
+              name: item.name,
             };
 
       setLoading(true);
       setLoadingMore(false);
       setQueueError(null);
+      setMode("view");
+      const playlistMeta =
+        item.type === "liked"
+          ? {
+              title: "Liked Songs",
+              total: playlistRailData?.likedSongs?.total ?? 0,
+              artworkUrl: playlistRailData?.likedSongs?.artwork?.url ?? null,
+            }
+          : (() => {
+              const found = playlistRailData?.playlists.find(p => p.id === item.id);
+              return {
+                title: item.name,
+                total: found?.totalTracks ?? 0,
+                artworkUrl: found?.images?.[0]?.url ?? null,
+              };
+            })();
+      setSelectedMeta(playlistMeta);
       try {
         const response = await fetch("/api/queue", {
           method: "POST",
@@ -125,27 +161,41 @@ export default function WorkspaceShell({
           }
           appearance="workspace"
           activeId={activeId}
-          onSelect={handleSelect}
+          onSelect={item => handleSelect({ ...item, name: item.name })}
         />
       </div>
       <div className="flex flex-col gap-3">
-        <ReviewQueue
-          data={loading ? null : queueData}
-          isAuthenticated
-          error={queueError}
-          appearance="workspace"
-        />
-        {queueData?.nextOffset != null && (
-          <div className="flex justify-center">
-            <button
-              type="button"
-              onClick={handleLoadMore}
-              disabled={loadingMore}
-              className="rounded-full border border-emerald-500/60 bg-emerald-600/20 px-4 py-2 text-sm font-semibold text-emerald-200 transition hover:border-emerald-400 hover:bg-emerald-500/30 disabled:cursor-not-allowed disabled:opacity-60"
-            >
-              {loadingMore ? "Loading more..." : "Load more tracks"}
-            </button>
-          </div>
+        {mode === "view" ? (
+          <PlaylistViewer
+            data={loading ? null : queueData}
+            meta={selectedMeta}
+            loading={loading}
+            error={queueError}
+            onReview={() => setMode("review")}
+            onLoadMore={queueData?.nextOffset != null ? handleLoadMore : undefined}
+            loadingMore={loadingMore}
+          />
+        ) : (
+          <>
+            <ReviewQueue
+              data={loading ? null : queueData}
+              isAuthenticated
+              error={queueError}
+              appearance="workspace"
+            />
+            {queueData?.nextOffset != null && (
+              <div className="flex justify-center">
+                <button
+                  type="button"
+                  onClick={handleLoadMore}
+                  disabled={loadingMore}
+                  className="rounded-full border border-emerald-500/60 bg-emerald-600/20 px-4 py-2 text-sm font-semibold text-emerald-200 transition hover:border-emerald-400 hover:bg-emerald-500/30 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {loadingMore ? "Loading more..." : "Load more tracks"}
+                </button>
+              </div>
+            )}
+          </>
         )}
       </div>
     </div>

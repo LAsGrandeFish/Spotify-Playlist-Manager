@@ -25,6 +25,7 @@ export type QueueData = {
   tracks: QueueTrack[];
   total: number;
   nextOffset: number | null;
+  offset: number;
 };
 
 export const fetchQueueData = async (
@@ -47,6 +48,7 @@ export const fetchQueueData = async (
         addedAt: item.added_at,
       })),
       total: likedTracks.total,
+      offset,
       nextOffset: likedTracks.next ? offset + likedTracks.items.length : null,
     };
   }
@@ -70,6 +72,7 @@ export const fetchQueueData = async (
         addedAt: item.added_at,
       })),
     total: playlistTracks.total,
+    offset,
     nextOffset: playlistTracks.next ? offset + playlistTracks.items.length : null,
   };
 };
