@@ -4,7 +4,7 @@ import { useCallback, useMemo, useState } from "react";
 
 import PlaylistRailClient from "@/app/_components/library/playlist-rail-client";
 import PlaylistViewer from "@/app/_components/review/playlist-viewer";
-import ReviewQueue from "@/app/_components/review/review-queue";
+import ReviewStage from "@/app/_components/review/review-stage";
 import type { PlaylistRailData } from "@/lib/spotify/library";
 import type { QueueData, QueueSource } from "@/lib/spotify/queue";
 
@@ -176,26 +176,14 @@ export default function WorkspaceShell({
             loadingMore={loadingMore}
           />
         ) : (
-          <>
-            <ReviewQueue
-              data={loading ? null : queueData}
-              isAuthenticated
-              error={queueError}
-              appearance="workspace"
-            />
-            {queueData?.nextOffset != null && (
-              <div className="flex justify-center">
-                <button
-                  type="button"
-                  onClick={handleLoadMore}
-                  disabled={loadingMore}
-                  className="rounded-full border border-emerald-500/60 bg-emerald-600/20 px-4 py-2 text-sm font-semibold text-emerald-200 transition hover:border-emerald-400 hover:bg-emerald-500/30 disabled:cursor-not-allowed disabled:opacity-60"
-                >
-                  {loadingMore ? "Loading more..." : "Load more tracks"}
-                </button>
-              </div>
-            )}
-          </>
+          <ReviewStage
+            playlistRailData={playlistRailData}
+            queueData={loading ? null : queueData}
+            loading={loading}
+            error={queueError}
+            onLoadMore={queueData?.nextOffset != null ? handleLoadMore : undefined}
+            loadingMore={loadingMore}
+          />
         )}
       </div>
     </div>
