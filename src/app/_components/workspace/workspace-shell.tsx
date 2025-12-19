@@ -1,10 +1,12 @@
 "use client";
 
 import { useCallback, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 
 import PlaylistRailClient from "@/app/_components/library/playlist-rail-client";
 import PlaylistViewer from "@/app/_components/review/playlist-viewer";
-import ReviewStage from "@/app/_components/review/review-stage";
+import ReviewStage, { type ReviewSummaryData } from "@/app/_components/review/review-stage";
+import ReviewSummary from "@/app/_components/review/review-summary";
 import type { PlaylistRailData } from "@/lib/spotify/library";
 import type { QueueData, QueueSource } from "@/lib/spotify/queue";
 
@@ -21,11 +23,14 @@ export default function WorkspaceShell({
   initialQueueData,
   initialQueueError = null,
 }: WorkspaceShellProps) {
+  const router = useRouter();
   const [queueData, setQueueData] = useState<QueueData | null>(initialQueueData);
   const [queueError, setQueueError] = useState<string | null>(initialQueueError);
   const [loading, setLoading] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
-  const [mode, setMode] = useState<"view" | "review">("view");
+  const [mode, setMode] = useState<"view" | "review" | "summary">("view");
+  const [reviewSessionKey, setReviewSessionKey] = useState(0);
+  const [summaryData, setSummaryData] = useState<ReviewSummaryData | null>(null);
   const [selectedMeta, setSelectedMeta] = useState<{
     title: string;
     total: number;
@@ -150,21 +155,29 @@ export default function WorkspaceShell({
   }, [queueData, loadingMore]);
 
   return (
-    <div className="mt-6 grid gap-5 lg:grid-cols-[280px_1fr]">
-      <div className="self-start lg:sticky lg:top-24 lg:w-[260px]" style={{ maxHeight: "80vh" }}>
-        <PlaylistRailClient
-          data={
-            playlistRailData ?? {
-              likedSongs: { total: 0, artwork: null },
-              playlists: [],
+    <div
+      className={
+        mode === "summary"
+          ? "mt-6 flex w-full justify-center"
+          : "mt-6 grid gap-5 lg:grid-cols-[280px_1fr]"
+      }
+    >
+      {mode !== "summary" && (
+        <div className="self-start lg:sticky lg:top-24 lg:w-[260px]" style={{ maxHeight: "80vh" }}>
+          <PlaylistRailClient
+            data={
+              playlistRailData ?? {
+                likedSongs: { total: 0, artwork: null },
+                playlists: [],
+              }
             }
-          }
-          appearance="workspace"
-          activeId={activeId}
-          onSelect={item => handleSelect({ ...item, name: item.name })}
-        />
-      </div>
-      <div className="flex flex-col gap-3">
+            appearance="workspace"
+            activeId={activeId}
+            onSelect={item => handleSelect({ ...item, name: item.name })}
+          />
+        </div>
+      )}
+      <div className={mode === "summary" ? "w-full max-w-6xl" : "flex flex-col gap-3"}>
         {mode === "view" ? (
           <PlaylistViewer
             data={loading ? null : queueData}
@@ -175,15 +188,36 @@ export default function WorkspaceShell({
             onLoadMore={queueData?.nextOffset != null ? handleLoadMore : undefined}
             loadingMore={loadingMore}
           />
-        ) : (
+        ) : mode === "review" ? (
           <ReviewStage
+            key={reviewSessionKey}
             playlistRailData={playlistRailData}
             queueData={loading ? null : queueData}
             loading={loading}
             error={queueError}
             onLoadMore={queueData?.nextOffset != null ? handleLoadMore : undefined}
             loadingMore={loadingMore}
+            playlistMeta={{ title: selectedMeta.title, artworkUrl: selectedMeta.artworkUrl }}
+            onFinish={summary => {
+              setSummaryData(summary);
+              setMode("summary");
+            }}
           />
+        ) : (
+          summaryData && (
+            <ReviewSummary
+              summary={summaryData}
+              onConfirm={() => {
+                setSummaryData({ ...summaryData });
+                router.push("/");
+              }}
+              onRestart={() => {
+                setMode("review");
+                setSummaryData(null);
+                setReviewSessionKey(key => key + 1);
+              }}
+            />
+          )
         )}
       </div>
     </div>

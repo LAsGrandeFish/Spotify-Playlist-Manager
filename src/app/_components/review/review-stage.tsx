@@ -14,6 +14,11 @@ type ReviewStageProps = {
   error: string | null;
   onLoadMore?: () => void;
   loadingMore?: boolean;
+  playlistMeta: {
+    title: string;
+    artworkUrl: string | null;
+  };
+  onFinish?: (summary: ReviewSummaryData) => void;
 };
 
 type TrackAction = "pending" | "keep" | "remove";
@@ -26,6 +31,22 @@ type HistoryEntry = {
   trackId: string;
   previousAction: TrackAction;
   previousIndex: number;
+};
+
+export type SummaryTrack = {
+  id: string;
+  title: string;
+  artists: string;
+  artworkUrl: string | null;
+  addCount?: number;
+};
+
+export type ReviewSummaryData = {
+  playlistTitle: string;
+  artworkUrl: string | null;
+  removed: SummaryTrack[];
+  kept: SummaryTrack[];
+  added: SummaryTrack[];
 };
 
 const gradients = [
@@ -48,6 +69,8 @@ export default function ReviewStage({
   error,
   onLoadMore,
   loadingMore = false,
+  playlistMeta,
+  onFinish,
 }: ReviewStageProps) {
   const [trackStates, setTrackStates] = useState<TrackState[]>(() =>
     (queueData?.tracks ?? []).map(track => ({ ...track, action: "pending" as TrackAction })),
@@ -63,9 +86,10 @@ export default function ReviewStage({
     { id: string; name: string; artworkUrl: string | null }[]
   >([]);
   const [lastActionLabel, setLastActionLabel] = useState<string>("No actions yet.");
+  const [playlistTrackCache, setPlaylistTrackCache] = useState<Record<string, string[]>>({});
+  const [addCounts, setAddCounts] = useState<Record<string, number>>({});
 
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect
     setTrackStates((queueData?.tracks ?? []).map(track => ({ ...track, action: "pending" })));
     setActiveIndex(0);
     historyRef.current = [];
@@ -140,7 +164,29 @@ export default function ReviewStage({
     setIsAddMode(true);
   }, []);
 
-  const confirmAdd = useCallback(() => {
+  const fetchPlaylistTrackIds = useCallback(
+    async (playlistId: string) => {
+      if (playlistTrackCache[playlistId]) {
+        return playlistTrackCache[playlistId];
+      }
+      try {
+        const response = await fetch(`/api/playlists/${playlistId}/tracks`);
+        if (!response.ok) {
+          throw new Error("Failed to fetch playlist tracks.");
+        }
+        const data: { ids: string[] } = await response.json();
+        setPlaylistTrackCache(prev => ({ ...prev, [playlistId]: data.ids }));
+        return data.ids;
+      } catch (err) {
+        console.error("Failed to fetch playlist ids", err);
+        setLastActionLabel("Could not load playlist tracks for add check.");
+        return [];
+      }
+    },
+    [playlistTrackCache],
+  );
+
+  const confirmAdd = useCallback(async () => {
     if (!isAddMode) {
       setIsAddMode(true);
       setLastActionLabel("Add mode enabled");
@@ -148,6 +194,18 @@ export default function ReviewStage({
     }
     // Placeholder: record action to history (not persisted)
     if (selectedPlaylists.size > 0 && currentTrack) {
+      const targets = Array.from(selectedPlaylists);
+      const membershipResults = await Promise.all(
+        targets.map(async playlistId => {
+          const ids = await fetchPlaylistTrackIds(playlistId);
+          const has = new Set(ids).has(currentTrack.id);
+          return { playlistId, has };
+        }),
+      );
+
+      const duplicates = membershipResults.filter(r => r.has).length;
+      const adds = membershipResults.length - duplicates;
+
       historyRef.current = [
         ...historyRef.current,
         {
@@ -156,13 +214,29 @@ export default function ReviewStage({
           previousIndex: activeIndex,
         },
       ];
-      setLastActionLabel(
-        `Added to ${selectedPlaylists.size} playlist${selectedPlaylists.size > 1 ? "s" : ""}`,
-      );
+
+      if (adds > 0 && duplicates > 0) {
+        setLastActionLabel(`Added to ${adds}, skipped ${duplicates} (already there)`);
+      } else if (adds > 0) {
+        setLastActionLabel(
+          `Added to ${adds} playlist${adds > 1 ? "s" : ""}${
+            duplicates ? " (duplicates skipped)" : ""
+          }`,
+        );
+      } else {
+        setLastActionLabel("Skipped (already in selected playlists)");
+      }
+
+      if (adds > 0) {
+        setAddCounts(prev => ({
+          ...prev,
+          [currentTrack.id]: (prev[currentTrack.id] ?? 0) + adds,
+        }));
+      }
     }
     setSelectedPlaylists(new Set());
     setIsAddMode(false);
-  }, [activeIndex, currentTrack, isAddMode, selectedPlaylists.size]);
+  }, [activeIndex, currentTrack, fetchPlaylistTrackIds, isAddMode, selectedPlaylists]);
 
   const handleNewPlaylist = useCallback(() => {
     if (!newPlaylistName.trim()) return;
@@ -432,6 +506,50 @@ export default function ReviewStage({
       <div className="grid gap-6 lg:grid-cols-[1fr_280px]">
         {renderTrackCard()}
         {renderActions()}
+      </div>
+      <div className="flex justify-end">
+        <button
+          type="button"
+          onClick={() => {
+            if (!queueData) return;
+            const removed = trackStates
+              .filter(t => t.action === "remove")
+              .map(t => ({
+                id: t.id,
+                title: t.title,
+                artists: t.artists,
+                artworkUrl: t.artworkUrl,
+              }));
+            const kept = trackStates
+              .filter(t => t.action === "keep")
+              .map(t => ({
+                id: t.id,
+                title: t.title,
+                artists: t.artists,
+                artworkUrl: t.artworkUrl,
+              }));
+            const addedIds = Object.keys(addCounts);
+            const added = trackStates
+              .filter(t => addedIds.includes(t.id))
+              .map(t => ({
+                id: t.id,
+                title: t.title,
+                artists: t.artists,
+                artworkUrl: t.artworkUrl,
+                addCount: addCounts[t.id],
+              }));
+            onFinish?.({
+              playlistTitle: playlistMeta.title,
+              artworkUrl: playlistMeta.artworkUrl,
+              removed,
+              kept,
+              added,
+            });
+          }}
+          className="rounded-full border border-emerald-500 bg-emerald-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-emerald-500"
+        >
+          Finish
+        </button>
       </div>
 
       {newPlaylistModal ? (
