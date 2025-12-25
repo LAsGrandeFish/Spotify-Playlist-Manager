@@ -209,7 +209,10 @@ export default function WorkspaceShell({
               summary={summaryData}
               onConfirm={() => {
                 setSummaryData({ ...summaryData });
-                router.push("/");
+                setMode("view");
+                setSummaryData(null);
+                setReviewSessionKey(key => key + 1);
+                router.refresh();
               }}
               onRestart={() => {
                 setMode("review");
