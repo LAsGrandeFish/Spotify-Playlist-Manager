@@ -16,6 +16,8 @@ export type QueueTrack = {
   artists: string;
   album: string;
   durationMs: number;
+  uri: string | null;
+  previewUrl: string | null;
   artworkUrl: string | null;
   addedAt: string;
 };
@@ -44,6 +46,8 @@ export const fetchQueueData = async (
         artists: item.track.artists.map(artist => artist.name).join(", "),
         album: item.track.album.name,
         durationMs: item.track.duration_ms,
+        uri: item.track.uri ?? null,
+        previewUrl: item.track.preview_url ?? null,
         artworkUrl: item.track.album.images[0]?.url ?? null,
         addedAt: item.added_at,
       })),
@@ -68,6 +72,8 @@ export const fetchQueueData = async (
         artists: item.track.artists.map(artist => artist.name).join(", "),
         album: item.track.album.name,
         durationMs: item.track.duration_ms,
+        uri: item.track.uri ?? null,
+        previewUrl: item.track.preview_url ?? null,
         artworkUrl: item.track.album.images[0]?.url ?? null,
         addedAt: item.added_at,
       })),

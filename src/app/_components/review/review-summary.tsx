@@ -77,6 +77,7 @@ export default function ReviewSummary({
   const removedCount = summary.removed.length;
   const keptCount = summary.kept.length;
   const addedCount = summary.added.length;
+  const pendingCount = summary.pendingCount;
 
   return (
     <div className="mx-auto w-full max-w-5xl rounded-[28px] bg-[#0d0d0d] px-8 py-8 text-white shadow-[0_25px_80px_rgba(0,0,0,0.4)]">
@@ -105,7 +106,7 @@ export default function ReviewSummary({
         </div>
       </div>
 
-      <div className="mt-8 flex flex-col items-center gap-4">
+      <div className="mt-8 flex flex-col items-center gap-3">
         <span className="relative h-24 w-24 overflow-hidden rounded-2xl bg-gradient-to-br from-emerald-500 to-teal-400">
           {summary.artworkUrl ? (
             // eslint-disable-next-line @next/next/no-img-element
@@ -124,6 +125,9 @@ export default function ReviewSummary({
             <span className="text-emerald-300">{keptCount} kept</span>,{" "}
             <span className="text-sky-400">{addedCount} added to playlist(s)</span>
           </p>
+          {pendingCount > 0 && (
+            <p className="mt-1 text-xs text-zinc-500">{pendingCount} tracks left unreviewed</p>
+          )}
         </div>
       </div>
 

@@ -5,6 +5,41 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import type { PlaylistRailData } from "@/lib/spotify/library";
 import type { QueueData, QueueTrack } from "@/lib/spotify/queue";
+
+type SpotifyPlayerState = {
+  paused: boolean;
+  position: number;
+  duration: number;
+  track_window: {
+    current_track?: {
+      uri?: string;
+    };
+  };
+};
+
+type SpotifyPlayer = {
+  connect: () => Promise<boolean>;
+  disconnect: () => void;
+  addListener: (event: string, cb: (payload: unknown) => void) => void;
+  removeListener: (event: string, cb?: (payload: unknown) => void) => void;
+  togglePlay: () => Promise<void>;
+  pause: () => Promise<void>;
+};
+
+type SpotifySdk = {
+  Player: new (config: {
+    name: string;
+    getOAuthToken: (cb: (token: string) => void) => void;
+    volume?: number;
+  }) => SpotifyPlayer;
+};
+
+declare global {
+  interface Window {
+    Spotify?: SpotifySdk;
+    onSpotifyWebPlaybackSDKReady?: () => void;
+  }
+}
 const RIBBON_KEYS = ["S", "D", "F", "G", "H", "J", "K", "L"];
 
 type ReviewStageProps = {
@@ -47,6 +82,7 @@ export type ReviewSummaryData = {
   removed: SummaryTrack[];
   kept: SummaryTrack[];
   added: SummaryTrack[];
+  pendingCount: number;
 };
 
 const gradients = [
@@ -88,6 +124,18 @@ export default function ReviewStage({
   const [lastActionLabel, setLastActionLabel] = useState<string>("No actions yet.");
   const [playlistTrackCache, setPlaylistTrackCache] = useState<Record<string, string[]>>({});
   const [addCounts, setAddCounts] = useState<Record<string, number>>({});
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const playerRef = useRef<SpotifyPlayer | null>(null);
+  const playbackSourceRef = useRef<"none" | "preview" | "full">("none");
+  const [playbackToken, setPlaybackToken] = useState<string | null>(null);
+  const [playbackTokenError, setPlaybackTokenError] = useState<string | null>(null);
+  const [sdkReady, setSdkReady] = useState(false);
+  const [deviceId, setDeviceId] = useState<string | null>(null);
+  const [playbackSource, setPlaybackSource] = useState<"none" | "preview" | "full">("none");
+  const [activeTrackUri, setActiveTrackUri] = useState<string | null>(null);
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [currentTime, setCurrentTime] = useState(0);
+  const [duration, setDuration] = useState(30);
 
   useEffect(() => {
     setTrackStates((queueData?.tracks ?? []).map(track => ({ ...track, action: "pending" })));
@@ -96,7 +144,16 @@ export default function ReviewStage({
     setSelectedPlaylists(new Set());
     setIsAddMode(false);
     setLastActionLabel("No actions yet.");
+    setPlaybackSource("none");
+    setActiveTrackUri(null);
+    setIsPlaying(false);
+    setCurrentTime(0);
+    setDuration(30);
   }, [queueData]);
+
+  useEffect(() => {
+    playbackSourceRef.current = playbackSource;
+  }, [playbackSource]);
 
   const allPlaylists = useMemo(() => {
     const base =
@@ -112,6 +169,279 @@ export default function ReviewStage({
 
   const currentTrack = trackStates[activeIndex] ?? null;
   const totalTracks = trackStates.length;
+  const previewUrl = currentTrack?.previewUrl ?? null;
+  const canUseFullPlayback = Boolean(currentTrack?.uri && playbackToken && deviceId);
+  const playbackUnavailable = !previewUrl && !canUseFullPlayback;
+
+  useEffect(() => {
+    if (currentTrack?.durationMs) {
+      setDuration(currentTrack.durationMs / 1000);
+    } else {
+      setDuration(30);
+    }
+  }, [currentTrack?.durationMs]);
+
+  const formatTime = (seconds: number) => {
+    if (!Number.isFinite(seconds)) return "0:00";
+    const mins = Math.floor(seconds / 60);
+    const secs = Math.floor(seconds % 60)
+      .toString()
+      .padStart(2, "0");
+    return `${mins}:${secs}`;
+  };
+
+  const fetchPlaybackToken = useCallback(async () => {
+    try {
+      const response = await fetch("/api/auth/token");
+      if (!response.ok) {
+        throw new Error("Failed to fetch Spotify token.");
+      }
+      const data: { accessToken: string } = await response.json();
+      setPlaybackToken(data.accessToken);
+      setPlaybackTokenError(null);
+    } catch (err) {
+      console.error("Failed to load Spotify playback token:", err);
+      setPlaybackTokenError("Spotify playback token unavailable.");
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchPlaybackToken();
+  }, [fetchPlaybackToken]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    if (window.Spotify) {
+      setSdkReady(true);
+      return;
+    }
+    if (document.querySelector("script[data-spotify-player]")) {
+      window.onSpotifyWebPlaybackSDKReady = () => setSdkReady(true);
+      return;
+    }
+    const script = document.createElement("script");
+    script.src = "https://sdk.scdn.co/spotify-player.js";
+    script.async = true;
+    script.dataset.spotifyPlayer = "true";
+    window.onSpotifyWebPlaybackSDKReady = () => setSdkReady(true);
+    document.body.appendChild(script);
+    return () => {
+      script.remove();
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!sdkReady || !playbackToken) return;
+    if (!window.Spotify || playerRef.current) return;
+    const player = new window.Spotify.Player({
+      name: "Spotify Playlist Manager",
+      getOAuthToken: cb => cb(playbackToken),
+      volume: 0.7,
+    });
+
+    const handleReady = ({ device_id }: { device_id: string }) => {
+      setDeviceId(device_id);
+    };
+
+    const handleNotReady = () => {
+      setDeviceId(null);
+    };
+
+    const handleStateChanged = (state: SpotifyPlayerState | null) => {
+      if (!state || playbackSourceRef.current === "preview") return;
+      setPlaybackSource("full");
+      setIsPlaying(!state.paused);
+      setCurrentTime(state.position / 1000);
+      setDuration(state.duration / 1000);
+      setActiveTrackUri(state.track_window.current_track?.uri ?? null);
+    };
+
+    const handleAuthError = (payload: { message?: string }) => {
+      setPlaybackTokenError(payload.message ?? "Spotify authentication error.");
+    };
+
+    const handleAccountError = (payload: { message?: string }) => {
+      setPlaybackTokenError(payload.message ?? "Spotify playback error.");
+    };
+
+    player.addListener("ready", handleReady);
+    player.addListener("not_ready", handleNotReady);
+    player.addListener("player_state_changed", handleStateChanged);
+    player.addListener("authentication_error", handleAuthError);
+    player.addListener("account_error", handleAccountError);
+    player.addListener("initialization_error", handleAccountError);
+
+    player.connect().catch(err => {
+      console.error("Failed to connect Spotify player:", err);
+    });
+    playerRef.current = player;
+
+    return () => {
+      player.removeListener("ready", handleReady);
+      player.removeListener("not_ready", handleNotReady);
+      player.removeListener("player_state_changed", handleStateChanged);
+      player.removeListener("authentication_error", handleAuthError);
+      player.removeListener("account_error", handleAccountError);
+      player.removeListener("initialization_error", handleAccountError);
+      player.disconnect();
+      playerRef.current = null;
+    };
+  }, [playbackToken, sdkReady]);
+
+  useEffect(() => {
+    if (!deviceId || !playbackToken) return;
+    const transferPlayback = async () => {
+      try {
+        await fetch("https://api.spotify.com/v1/me/player", {
+          method: "PUT",
+          headers: {
+            Authorization: `Bearer ${playbackToken}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            device_ids: [deviceId],
+            play: false,
+          }),
+        });
+      } catch (err) {
+        console.error("Failed to transfer playback:", err);
+      }
+    };
+    transferPlayback();
+  }, [deviceId, playbackToken]);
+
+  useEffect(() => {
+    if (!audioRef.current) {
+      audioRef.current = new Audio();
+    }
+    const audio = audioRef.current;
+    audio.pause();
+    audio.currentTime = 0;
+    setCurrentTime(0);
+    setIsPlaying(false);
+    setPlaybackSource("none");
+    if (previewUrl) {
+      audio.src = previewUrl;
+      audio.load();
+    } else {
+      audio.removeAttribute("src");
+    }
+  }, [previewUrl]);
+
+  useEffect(() => {
+    if (!playerRef.current) return;
+    playerRef.current.pause().catch(() => undefined);
+  }, [currentTrack?.id]);
+
+  useEffect(() => {
+    const audio = audioRef.current;
+    if (!audio) return;
+
+    const handleTimeUpdate = () => {
+      if (playbackSourceRef.current !== "preview") return;
+      setCurrentTime(audio.currentTime);
+      if (audio.duration && Number.isFinite(audio.duration)) {
+        setDuration(audio.duration);
+      } else {
+        setDuration(30);
+      }
+    };
+
+    const handleEnded = () => {
+      if (playbackSourceRef.current !== "preview") return;
+      setIsPlaying(false);
+      setCurrentTime(audio.duration || 30);
+    };
+
+    audio.addEventListener("timeupdate", handleTimeUpdate);
+    audio.addEventListener("ended", handleEnded);
+    return () => {
+      audio.removeEventListener("timeupdate", handleTimeUpdate);
+      audio.removeEventListener("ended", handleEnded);
+    };
+  }, []);
+
+  const startFullPlayback = useCallback(
+    async (uri: string) => {
+      if (!playbackToken || !deviceId) return;
+      try {
+        const audio = audioRef.current;
+        if (audio) {
+          audio.pause();
+          audio.currentTime = 0;
+        }
+        if (activeTrackUri && activeTrackUri === uri && playerRef.current) {
+          await playerRef.current.togglePlay();
+          return;
+        }
+        await fetch(`https://api.spotify.com/v1/me/player/play?device_id=${deviceId}`, {
+          method: "PUT",
+          headers: {
+            Authorization: `Bearer ${playbackToken}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ uris: [uri], position_ms: 0 }),
+        });
+        setPlaybackSource("full");
+        setActiveTrackUri(uri);
+        setIsPlaying(true);
+      } catch (err) {
+        console.error("Failed to start full playback:", err);
+      }
+    },
+    [activeTrackUri, deviceId, playbackToken],
+  );
+
+  const togglePlayback = useCallback(async () => {
+    if (canUseFullPlayback && currentTrack?.uri) {
+      await startFullPlayback(currentTrack.uri);
+      return;
+    }
+    const audio = audioRef.current;
+    if (!audio || !previewUrl) return;
+    setPlaybackSource("preview");
+    if (audio.paused) {
+      audio
+        .play()
+        .then(() => setIsPlaying(true))
+        .catch(() => setIsPlaying(false));
+    } else {
+      audio.pause();
+      setIsPlaying(false);
+    }
+  }, [canUseFullPlayback, currentTrack?.uri, previewUrl, startFullPlayback]);
+
+  const restartPlayback = useCallback(async () => {
+    if (canUseFullPlayback && playbackToken && deviceId) {
+      try {
+        await fetch(
+          `https://api.spotify.com/v1/me/player/seek?position_ms=0&device_id=${deviceId}`,
+          {
+            method: "PUT",
+            headers: {
+              Authorization: `Bearer ${playbackToken}`,
+            },
+          },
+        );
+        if (!isPlaying && playerRef.current) {
+          await playerRef.current.togglePlay();
+        }
+        setPlaybackSource("full");
+        setIsPlaying(true);
+        return;
+      } catch (err) {
+        console.error("Failed to restart full playback:", err);
+      }
+    }
+    const audio = audioRef.current;
+    if (!audio || !previewUrl) return;
+    setPlaybackSource("preview");
+    audio.currentTime = 0;
+    audio
+      .play()
+      .then(() => setIsPlaying(true))
+      .catch(() => setIsPlaying(false));
+  }, [canUseFullPlayback, deviceId, isPlaying, playbackToken, previewUrl]);
 
   const setAction = useCallback(
     (action: TrackAction) => {
@@ -291,9 +621,13 @@ export default function ReviewStage({
           event.preventDefault();
           setNewPlaylistModal(true);
           break;
+        case "P":
+          event.preventDefault();
+          togglePlayback();
+          break;
         case "X":
           event.preventDefault();
-          // repeat/restart placeholder; no-op for now
+          restartPlayback();
           break;
         default:
           break;
@@ -301,7 +635,16 @@ export default function ReviewStage({
     };
     window.addEventListener("keydown", handleKey);
     return () => window.removeEventListener("keydown", handleKey);
-  }, [allPlaylists.length, confirmAdd, togglePlaylistSelection, setAction, undo, visiblePlaylists]);
+  }, [
+    allPlaylists.length,
+    confirmAdd,
+    restartPlayback,
+    togglePlayback,
+    togglePlaylistSelection,
+    setAction,
+    undo,
+    visiblePlaylists,
+  ]);
 
   const renderRibbon = () => (
     <div className="mx-auto w-full max-w-5xl rounded-[20px] bg-[#0d0d0d] p-4 text-white shadow-[0_20px_60px_rgba(0,0,0,0.35)]">
@@ -406,20 +749,45 @@ export default function ReviewStage({
             <p className="truncate text-sm text-zinc-400">{currentTrack.artists}</p>
           </div>
           <div className="flex w-full items-center gap-2">
-            <span className="text-[11px] text-zinc-500">0:00</span>
+            <span className="text-[11px] text-zinc-500">{formatTime(currentTime)}</span>
             <div className="h-1 flex-1 rounded-full bg-zinc-800">
-              <div className="h-full w-1/6 rounded-full bg-emerald-500" />
+              <div
+                className="h-full rounded-full bg-emerald-500 transition-all"
+                style={{
+                  width: `${Math.min((currentTime / Math.max(duration, 1)) * 100, 100)}%`,
+                }}
+              />
             </div>
-            <span className="text-[11px] text-zinc-500">-0:30</span>
-          </div>
-          <div className="flex w-full items-center justify-center gap-6 text-xs text-zinc-200">
-            <span className="flex items-center gap-1 rounded-full border border-zinc-700 px-3 py-1">
-              <span className="text-[11px] uppercase tracking-wide">P</span> Play/Pause
-            </span>
-            <span className="flex items-center gap-1 rounded-full border border-zinc-700 px-3 py-1">
-              <span className="text-[11px] uppercase tracking-wide">X</span> Repeat
+            <span className="text-[11px] text-zinc-500">
+              {!playbackUnavailable
+                ? `-${formatTime(Math.max(duration - currentTime, 0))}`
+                : "-0:00"}
             </span>
           </div>
+          <div className="flex w-full items-center justify-center gap-4 text-xs text-zinc-200">
+            <button
+              type="button"
+              onClick={togglePlayback}
+              disabled={playbackUnavailable}
+              className="flex items-center gap-1 rounded-full border border-zinc-700 px-3 py-1 disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              <span className="text-[11px] uppercase tracking-wide">P</span>{" "}
+              {isPlaying ? "Pause" : "Play"}
+            </button>
+            <button
+              type="button"
+              onClick={restartPlayback}
+              disabled={playbackUnavailable}
+              className="flex items-center gap-1 rounded-full border border-zinc-700 px-3 py-1 disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              <span className="text-[11px] uppercase tracking-wide">X</span> Restart
+            </button>
+          </div>
+          {playbackUnavailable ? (
+            <p className="text-[11px] text-zinc-500">Playback unavailable for this track.</p>
+          ) : playbackTokenError ? (
+            <p className="text-[11px] text-amber-400">{playbackTokenError}</p>
+          ) : null}
         </>
       ) : (
         <p className="text-sm text-zinc-400">No track selected.</p>
@@ -538,12 +906,14 @@ export default function ReviewStage({
                 artworkUrl: t.artworkUrl,
                 addCount: addCounts[t.id],
               }));
+            const pendingCount = trackStates.filter(t => t.action === "pending").length;
             onFinish?.({
               playlistTitle: playlistMeta.title,
               artworkUrl: playlistMeta.artworkUrl,
               removed,
               kept,
               added,
+              pendingCount,
             });
           }}
           className="rounded-full border border-emerald-500 bg-emerald-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-emerald-500"

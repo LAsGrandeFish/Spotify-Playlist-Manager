@@ -58,6 +58,7 @@ export type SpotifyTrack = {
   id: string;
   name: string;
   uri: string;
+  preview_url?: string | null;
   duration_ms: number;
   artists: SpotifyTrackArtist[];
   album: SpotifyTrackAlbum;
