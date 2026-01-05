@@ -121,12 +121,12 @@ export default async function Home() {
                   {userInitial}
                 </span>
               )}
-              <Link
+              <a
                 href="/api/auth/logout"
                 className="rounded-full border border-zinc-700 px-4 py-1.5 text-xs font-semibold uppercase tracking-wide text-zinc-300 transition hover:border-emerald-500 hover:text-white"
               >
                 Log out
-              </Link>
+              </a>
             </div>
           </header>
           <WorkspaceShell

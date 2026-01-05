@@ -24,9 +24,31 @@ export async function GET() {
     return NextResponse.json({ error: "Spotify session expired." }, { status: 401 });
   }
 
+  const requiredScopes = [
+    "streaming",
+    "user-read-email",
+    "user-read-private",
+    "user-read-playback-state",
+    "user-modify-playback-state",
+  ];
+  const grantedScopes = new Set(refreshedTokens.scope?.split(" ").filter(Boolean));
+  const missingScopes = requiredScopes.filter(scope => !grantedScopes.has(scope));
+
+  if (missingScopes.length > 0) {
+    return NextResponse.json(
+      {
+        error: "Missing required Spotify scopes.",
+        missingScopes,
+        grantedScopes: Array.from(grantedScopes),
+      },
+      { status: 403 },
+    );
+  }
+
   const response = NextResponse.json({
     accessToken: refreshedTokens.accessToken,
     expiresAt: refreshedTokens.expiresAt,
+    scopes: Array.from(grantedScopes),
   });
 
   response.cookies.set(SPOTIFY_COOKIE_KEYS.tokens, serializeSpotifyTokenPayload(refreshedTokens), {

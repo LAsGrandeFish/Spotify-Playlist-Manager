@@ -22,7 +22,7 @@ export async function GET(): Promise<NextResponse> {
       redirectUri: spotifyEnv.redirectUri(),
       codeChallenge,
       state,
-      showDialog: false,
+      showDialog: true,
     });
 
     const response = NextResponse.redirect(authorizeUrl, { status: 302 });

@@ -6,6 +6,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { PlaylistRailData } from "@/lib/spotify/library";
 import type { QueueData, QueueTrack } from "@/lib/spotify/queue";
 
+const PLAYER_NAME = "Spotify Playlist Manager";
+
 type SpotifyPlayerState = {
   paused: boolean;
   position: number;
@@ -202,7 +204,21 @@ export default function ReviewStage({
     try {
       const response = await fetch("/api/auth/token");
       if (!response.ok) {
-        throw new Error("Failed to fetch Spotify token.");
+        const errorBody = await response.json().catch(() => null);
+        const message =
+          errorBody?.error ??
+          (response.status === 403
+            ? "Missing required Spotify scopes. Log out and re-authorize."
+            : "Failed to fetch Spotify token.");
+        if (response.status === 403 && Array.isArray(errorBody?.missingScopes)) {
+          setPlaybackTokenError(
+            `Missing scopes: ${errorBody.missingScopes.join(", ")}. Log out and re-authorize.`,
+          );
+        } else {
+          setPlaybackTokenError(message);
+        }
+        setPlaybackToken(null);
+        return;
       }
       const data: { accessToken: string } = await response.json();
       setPlaybackToken(data.accessToken);
@@ -242,7 +258,7 @@ export default function ReviewStage({
     if (!sdkReady || !playbackToken) return;
     if (!window.Spotify || playerRef.current) return;
     const player = new window.Spotify.Player({
-      name: "Spotify Playlist Manager",
+      name: PLAYER_NAME,
       getOAuthToken: cb => cb(playbackToken),
       volume: 0.7,
     });
@@ -319,6 +335,31 @@ export default function ReviewStage({
     transferPlayback();
   }, [deviceId, playbackToken]);
 
+  const fetchPlaybackDeviceId = useCallback(async () => {
+    if (!playbackToken) return null;
+    try {
+      const response = await fetch("https://api.spotify.com/v1/me/player/devices", {
+        headers: {
+          Authorization: `Bearer ${playbackToken}`,
+        },
+      });
+      if (!response.ok) {
+        return null;
+      }
+      const data: { devices?: { id: string; name: string }[] } = await response.json();
+      const devices = data.devices ?? [];
+      const named = devices.find(device => device.name === PLAYER_NAME);
+      const resolvedId = named?.id ?? devices[0]?.id ?? null;
+      if (resolvedId) {
+        setDeviceId(resolvedId);
+      }
+      return resolvedId;
+    } catch (err) {
+      console.error("Failed to fetch playback devices:", err);
+      return null;
+    }
+  }, [playbackToken]);
+
   useEffect(() => {
     if (!audioRef.current) {
       audioRef.current = new Audio();
@@ -373,7 +414,15 @@ export default function ReviewStage({
 
   const startFullPlayback = useCallback(
     async (uri: string) => {
-      if (!playbackToken || !deviceId) return;
+      if (!playbackToken) return;
+      let targetDeviceId = deviceId;
+      if (!targetDeviceId) {
+        targetDeviceId = await fetchPlaybackDeviceId();
+      }
+      if (!targetDeviceId) {
+        setPlaybackTokenError("Playback device unavailable. Try restarting the player.");
+        return;
+      }
       try {
         const audio = audioRef.current;
         if (audio) {
@@ -384,14 +433,51 @@ export default function ReviewStage({
           await playerRef.current.togglePlay();
           return;
         }
-        await fetch(`https://api.spotify.com/v1/me/player/play?device_id=${deviceId}`, {
+        const transferResponse = await fetch("https://api.spotify.com/v1/me/player", {
           method: "PUT",
           headers: {
             Authorization: `Bearer ${playbackToken}`,
             "Content-Type": "application/json",
           },
-          body: JSON.stringify({ uris: [uri], position_ms: 0 }),
+          body: JSON.stringify({
+            device_ids: [targetDeviceId],
+            play: false,
+          }),
         });
+
+        if (!transferResponse.ok) {
+          const errorText = await transferResponse.text();
+          if (transferResponse.status === 404) {
+            const refreshedDeviceId = await fetchPlaybackDeviceId();
+            if (refreshedDeviceId) {
+              targetDeviceId = refreshedDeviceId;
+            } else {
+              setPlaybackTokenError(`Playback device error: ${errorText}`);
+              return;
+            }
+          } else {
+            setPlaybackTokenError(`Playback device error: ${errorText}`);
+            return;
+          }
+        }
+
+        const playResponse = await fetch(
+          `https://api.spotify.com/v1/me/player/play?device_id=${targetDeviceId}`,
+          {
+            method: "PUT",
+            headers: {
+              Authorization: `Bearer ${playbackToken}`,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({ uris: [uri], position_ms: 0 }),
+          },
+        );
+
+        if (!playResponse.ok) {
+          const errorText = await playResponse.text();
+          setPlaybackTokenError(`Playback failed: ${errorText}`);
+          return;
+        }
         setPlaybackSource("full");
         setActiveTrackUri(uri);
         setIsPlaying(true);
@@ -399,7 +485,7 @@ export default function ReviewStage({
         console.error("Failed to start full playback:", err);
       }
     },
-    [activeTrackUri, deviceId, playbackToken],
+    [activeTrackUri, deviceId, fetchPlaybackDeviceId, playbackToken],
   );
 
   useEffect(() => {

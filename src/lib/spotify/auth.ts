@@ -18,6 +18,8 @@ export const DEFAULT_SPOTIFY_SCOPES: string[] = [
   "playlist-modify-private",
   "playlist-modify-public",
   "streaming",
+  "user-read-email",
+  "user-read-private",
   "user-read-playback-state",
   "user-modify-playback-state",
 ];
