@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 
-import { isDevelopment } from "@/lib/env";
+import { isDevelopment, spotifyEnv } from "@/lib/env";
 import { SPOTIFY_COOKIE_KEYS } from "@/lib/spotify/auth";
 
 const baseCookieOptions = {
@@ -12,7 +12,7 @@ const baseCookieOptions = {
 };
 
 export async function POST(request: NextRequest): Promise<NextResponse> {
-  const response = NextResponse.redirect(new URL("/", request.url));
+  const response = NextResponse.redirect(new URL("/", spotifyEnv.redirectUri()));
 
   response.cookies.set(SPOTIFY_COOKIE_KEYS.tokens, "", {
     ...baseCookieOptions,
@@ -25,7 +25,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 }
 
 export async function GET(request: NextRequest): Promise<NextResponse> {
-  const response = NextResponse.redirect(new URL("/", request.url));
+  const response = NextResponse.redirect(new URL("/", spotifyEnv.redirectUri()));
 
   response.cookies.set(SPOTIFY_COOKIE_KEYS.tokens, "", {
     ...baseCookieOptions,

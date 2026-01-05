@@ -90,7 +90,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       expiresAt: calculateSpotifyExpiryTimestamp(expires_in),
     });
 
-    const response = NextResponse.redirect(new URL("/", request.url));
+    const response = NextResponse.redirect(new URL("/", spotifyEnv.redirectUri()));
 
     response.cookies.set(SPOTIFY_COOKIE_KEYS.tokens, tokenCookiePayload, {
       httpOnly: true,

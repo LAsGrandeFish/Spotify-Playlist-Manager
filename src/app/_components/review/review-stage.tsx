@@ -136,6 +136,9 @@ export default function ReviewStage({
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(30);
+  const [isSeeking, setIsSeeking] = useState(false);
+  const isSeekingRef = useRef(false);
+  const lastAutoPlayTrackIdRef = useRef<string | null>(null);
 
   useEffect(() => {
     setTrackStates((queueData?.tracks ?? []).map(track => ({ ...track, action: "pending" })));
@@ -149,11 +152,16 @@ export default function ReviewStage({
     setIsPlaying(false);
     setCurrentTime(0);
     setDuration(30);
+    lastAutoPlayTrackIdRef.current = null;
   }, [queueData]);
 
   useEffect(() => {
     playbackSourceRef.current = playbackSource;
   }, [playbackSource]);
+
+  useEffect(() => {
+    isSeekingRef.current = isSeeking;
+  }, [isSeeking]);
 
   const allPlaylists = useMemo(() => {
     const base =
@@ -249,6 +257,7 @@ export default function ReviewStage({
 
     const handleStateChanged = (state: SpotifyPlayerState | null) => {
       if (!state || playbackSourceRef.current === "preview") return;
+      if (isSeekingRef.current) return;
       setPlaybackSource("full");
       setIsPlaying(!state.paused);
       setCurrentTime(state.position / 1000);
@@ -339,6 +348,7 @@ export default function ReviewStage({
 
     const handleTimeUpdate = () => {
       if (playbackSourceRef.current !== "preview") return;
+      if (isSeekingRef.current) return;
       setCurrentTime(audio.currentTime);
       if (audio.duration && Number.isFinite(audio.duration)) {
         setDuration(audio.duration);
@@ -392,6 +402,26 @@ export default function ReviewStage({
     [activeTrackUri, deviceId, playbackToken],
   );
 
+  useEffect(() => {
+    if (!currentTrack) return;
+    if (currentTrack.uri && !canUseFullPlayback) return;
+    if (lastAutoPlayTrackIdRef.current === currentTrack.id) return;
+    if (canUseFullPlayback && currentTrack.uri) {
+      startFullPlayback(currentTrack.uri);
+      lastAutoPlayTrackIdRef.current = currentTrack.id;
+      return;
+    }
+    if (!previewUrl) return;
+    const audio = audioRef.current;
+    if (!audio) return;
+    setPlaybackSource("preview");
+    audio
+      .play()
+      .then(() => setIsPlaying(true))
+      .catch(() => setIsPlaying(false));
+    lastAutoPlayTrackIdRef.current = currentTrack.id;
+  }, [canUseFullPlayback, currentTrack, previewUrl, startFullPlayback]);
+
   const togglePlayback = useCallback(async () => {
     if (canUseFullPlayback && currentTrack?.uri) {
       await startFullPlayback(currentTrack.uri);
@@ -442,6 +472,36 @@ export default function ReviewStage({
       .then(() => setIsPlaying(true))
       .catch(() => setIsPlaying(false));
   }, [canUseFullPlayback, deviceId, isPlaying, playbackToken, previewUrl]);
+
+  const handleSeek = useCallback(
+    async (value: number) => {
+      const nextTime = Math.max(0, Math.min(value, duration));
+      setCurrentTime(nextTime);
+      if (canUseFullPlayback && playbackToken && deviceId) {
+        try {
+          await fetch(
+            `https://api.spotify.com/v1/me/player/seek?position_ms=${Math.floor(
+              nextTime * 1000,
+            )}&device_id=${deviceId}`,
+            {
+              method: "PUT",
+              headers: {
+                Authorization: `Bearer ${playbackToken}`,
+              },
+            },
+          );
+        } catch (err) {
+          console.error("Failed to seek full playback:", err);
+        }
+        return;
+      }
+      const audio = audioRef.current;
+      if (!audio || !previewUrl) return;
+      setPlaybackSource("preview");
+      audio.currentTime = nextTime;
+    },
+    [canUseFullPlayback, deviceId, duration, playbackToken, previewUrl],
+  );
 
   const setAction = useCallback(
     (action: TrackAction) => {
@@ -750,12 +810,28 @@ export default function ReviewStage({
           </div>
           <div className="flex w-full items-center gap-2">
             <span className="text-[11px] text-zinc-500">{formatTime(currentTime)}</span>
-            <div className="h-1 flex-1 rounded-full bg-zinc-800">
-              <div
-                className="h-full rounded-full bg-emerald-500 transition-all"
-                style={{
-                  width: `${Math.min((currentTime / Math.max(duration, 1)) * 100, 100)}%`,
-                }}
+            <div className="relative flex-1">
+              <div className="h-1 w-full rounded-full bg-zinc-800">
+                <div
+                  className="h-full rounded-full bg-emerald-500 transition-all"
+                  style={{
+                    width: `${Math.min((currentTime / Math.max(duration, 1)) * 100, 100)}%`,
+                  }}
+                />
+              </div>
+              <input
+                type="range"
+                min={0}
+                max={Math.max(duration, 1)}
+                step={1}
+                value={currentTime}
+                onChange={event => handleSeek(Number(event.target.value))}
+                onPointerDown={() => setIsSeeking(true)}
+                onPointerUp={() => setIsSeeking(false)}
+                onPointerCancel={() => setIsSeeking(false)}
+                disabled={playbackUnavailable}
+                className="absolute inset-0 h-1 w-full cursor-pointer opacity-0 disabled:cursor-not-allowed"
+                aria-label="Seek playback"
               />
             </div>
             <span className="text-[11px] text-zinc-500">
