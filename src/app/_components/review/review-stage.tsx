@@ -1,6 +1,7 @@
 "use client";
 
 import clsx from "clsx";
+import { Range, getTrackBackground } from "react-range";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import type { PlaylistRailData } from "@/lib/spotify/library";
@@ -141,6 +142,8 @@ export default function ReviewStage({
   const [isSeeking, setIsSeeking] = useState(false);
   const isSeekingRef = useRef(false);
   const lastAutoPlayTrackIdRef = useRef<string | null>(null);
+  const rafRef = useRef<number | null>(null);
+  const lastTickRef = useRef<number | null>(null);
 
   useEffect(() => {
     setTrackStates((queueData?.tracks ?? []).map(track => ({ ...track, action: "pending" })));
@@ -190,6 +193,36 @@ export default function ReviewStage({
       setDuration(30);
     }
   }, [currentTrack?.durationMs]);
+
+  useEffect(() => {
+    if (rafRef.current) {
+      cancelAnimationFrame(rafRef.current);
+      rafRef.current = null;
+    }
+    lastTickRef.current = null;
+    if (!isPlaying || playbackSource !== "full" || isSeeking) {
+      return;
+    }
+
+    const tick = (timestamp: number) => {
+      if (lastTickRef.current == null) {
+        lastTickRef.current = timestamp;
+      }
+      const deltaSeconds = (timestamp - lastTickRef.current) / 1000;
+      lastTickRef.current = timestamp;
+      setCurrentTime(prev => Math.min(prev + deltaSeconds, duration));
+      rafRef.current = requestAnimationFrame(tick);
+    };
+
+    rafRef.current = requestAnimationFrame(tick);
+    return () => {
+      if (rafRef.current) {
+        cancelAnimationFrame(rafRef.current);
+      }
+      rafRef.current = null;
+      lastTickRef.current = null;
+    };
+  }, [duration, isPlaying, isSeeking, playbackSource]);
 
   const formatTime = (seconds: number) => {
     if (!Number.isFinite(seconds)) return "0:00";
@@ -896,28 +929,49 @@ export default function ReviewStage({
           </div>
           <div className="flex w-full items-center gap-2">
             <span className="text-[11px] text-zinc-500">{formatTime(currentTime)}</span>
-            <div className="relative flex-1">
-              <div className="h-1 w-full rounded-full bg-zinc-800">
-                <div
-                  className="h-full rounded-full bg-emerald-500 transition-all"
-                  style={{
-                    width: `${Math.min((currentTime / Math.max(duration, 1)) * 100, 100)}%`,
-                  }}
-                />
-              </div>
-              <input
-                type="range"
+            <div className="flex-1">
+              <Range
+                values={[currentTime]}
+                step={1}
                 min={0}
                 max={Math.max(duration, 1)}
-                step={1}
-                value={currentTime}
-                onChange={event => handleSeek(Number(event.target.value))}
-                onPointerDown={() => setIsSeeking(true)}
-                onPointerUp={() => setIsSeeking(false)}
-                onPointerCancel={() => setIsSeeking(false)}
                 disabled={playbackUnavailable}
-                className="absolute inset-0 h-1 w-full cursor-pointer opacity-0 disabled:cursor-not-allowed"
-                aria-label="Seek playback"
+                onChange={values => {
+                  setIsSeeking(true);
+                  setCurrentTime(values[0]);
+                }}
+                onFinalChange={values => {
+                  setIsSeeking(false);
+                  handleSeek(values[0]);
+                }}
+                renderTrack={({ props, children }) => (
+                  <div
+                    onMouseDown={props.onMouseDown}
+                    onTouchStart={props.onTouchStart}
+                    className="flex h-6 w-full items-center"
+                  >
+                    <div
+                      ref={props.ref}
+                      className="h-1 w-full rounded-full"
+                      style={{
+                        background: getTrackBackground({
+                          values: [currentTime],
+                          colors: ["#10b981", "#27272a"],
+                          min: 0,
+                          max: Math.max(duration, 1),
+                        }),
+                      }}
+                    >
+                      {children}
+                    </div>
+                  </div>
+                )}
+                renderThumb={({ props }) => (
+                  <div
+                    {...props}
+                    className="h-3 w-3 rounded-full border border-emerald-200 bg-emerald-500 shadow"
+                  />
+                )}
               />
             </div>
             <span className="text-[11px] text-zinc-500">
