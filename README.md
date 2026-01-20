@@ -14,22 +14,22 @@
 
 ```bash
 npm install
-npm run dev
+npm run dev -- --hostname 127.0.0.1 --port 3000
 ```
 
-Visit [http://localhost:3000](http://localhost:3000) to see the current UI shell. Edit files under `src/app` and the page will hot-reload.
+Visit [http://127.0.0.1:3000](http://127.0.0.1:3000) to see the current UI shell. Edit files under `src/app` and the page will hot-reload.
 
 ## Spotify OAuth Setup
 
 1. Create an app in the [Spotify Developer Dashboard](https://developer.spotify.com/dashboard).
-2. Add `http://localhost:3000/api/auth/callback` as a redirect URI (and add any production URIs you plan to use).
+2. Add `http://127.0.0.1:3000/api/auth/callback` as a redirect URI (and add any production URIs you plan to use).
 3. Copy the Client ID (and Client Secret if you plan to allow server-side refresh without PKCE-only mode).
 4. Create a `.env.local` (already git-ignored) with:
 
    ```env
    SPOTIFY_CLIENT_ID=your_client_id
    SPOTIFY_CLIENT_SECRET=your_client_secret
-   SPOTIFY_REDIRECT_URI=http://localhost:3000/api/auth/callback
+   SPOTIFY_REDIRECT_URI=http://127.0.0.1:3000/api/auth/callback
    ```
 
 5. Restart `npm run dev` so the new environment variables load.
@@ -47,9 +47,11 @@ On the homepage, click **Log in with Spotify** to run the full PKCE flow. A succ
 ## Roadmap
 
 - [x] Spotify OAuth (PKCE) + token refresh
-- [ ] Playlist rail with liked songs + filters
-- [ ] Virtualized review queue with hotkeys (V/R/I/J/K/Z)
-- [ ] Batch confirmation modal that chunks Spotify API writes
+- [x] Playlist rail + playlist viewer
+- [x] Review mode with hotkeys + summary screen
+- [x] Web Playback SDK integration (full playback)
+- [ ] Persist review sessions (DB + Prisma)
+- [ ] Batch confirmation modal with chunked Spotify API writes
 
 ## Notes
 
