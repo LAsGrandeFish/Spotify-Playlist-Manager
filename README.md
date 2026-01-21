@@ -36,6 +36,23 @@ Visit [http://127.0.0.1:3000](http://127.0.0.1:3000) to see the current UI shell
 
 On the homepage, click **Log in with Spotify** to run the full PKCE flow. A successful login displays your Spotify profile at the top of the page and stores tokens in an HTTP-only cookie. Tokens are refreshed automatically as they near expiry; use **Log out** to clear the cookie and restart the flow.
 
+## Database (Phase 1)
+
+Local development uses SQLite via Prisma.
+
+1. Ensure `.env.local` contains:
+
+   ```env
+   DATABASE_URL="file:./prisma/dev.db"
+   ```
+
+2. Initialize the schema when ready:
+
+   ```bash
+   npx prisma generate
+   npx prisma migrate dev --name init
+   ```
+
 ## Available Scripts
 
 - `npm run dev` – start the Next.js dev server

@@ -1,0 +1,74 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+}
+
+model User {
+  id           String          @id @default(cuid())
+  spotifyId    String          @unique
+  displayName  String?
+  email        String?
+  createdAt    DateTime        @default(now())
+  updatedAt    DateTime        @updatedAt
+  sessions     ReviewSession[]
+}
+
+model ReviewSession {
+  id          String               @id @default(cuid())
+  userId      String
+  sourceType  String
+  sourceId    String?
+  sourceName  String?
+  status      String               @default("IN_PROGRESS")
+  createdAt   DateTime             @default(now())
+  updatedAt   DateTime             @updatedAt
+  user        User                 @relation(fields: [userId], references: [id])
+  tracks      ReviewTrack[]
+}
+
+model ReviewTrack {
+  id            String             @id @default(cuid())
+  sessionId     String
+  trackId       String
+  title         String
+  artists       String
+  album         String
+  durationMs    Int
+  artworkUrl    String?
+  addedAt       DateTime?
+  position      Int
+  action        String             @default("PENDING")
+  createdAt     DateTime           @default(now())
+  updatedAt     DateTime           @updatedAt
+  session       ReviewSession      @relation(fields: [sessionId], references: [id])
+  actions       ReviewAction[]
+  addTargets    ReviewTrackTarget[]
+
+  @@index([sessionId])
+  @@index([trackId])
+}
+
+model ReviewAction {
+  id          String            @id @default(cuid())
+  reviewTrackId String
+  action      String
+  createdAt   DateTime          @default(now())
+  reviewTrack ReviewTrack       @relation(fields: [reviewTrackId], references: [id])
+
+  @@index([reviewTrackId])
+}
+
+model ReviewTrackTarget {
+  id           String      @id @default(cuid())
+  reviewTrackId String
+  playlistId   String
+  playlistName String?
+  createdAt    DateTime    @default(now())
+  reviewTrack  ReviewTrack @relation(fields: [reviewTrackId], references: [id])
+
+  @@index([reviewTrackId])
+  @@index([playlistId])
+}
