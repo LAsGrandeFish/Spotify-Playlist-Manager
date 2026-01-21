@@ -36,12 +36,20 @@ const mapPlaylistToSummary = (playlist: SpotifyPlaylist): PlaylistSummary => ({
 });
 
 export const fetchPlaylistRailData = async (accessToken: string): Promise<PlaylistRailData> => {
-  const [playlistsResponse, likedSongs] = await Promise.all([
-    fetchSpotifyUserPlaylists(accessToken, { limit: 50 }),
-    fetchSpotifyLikedTracksPreview(accessToken),
-  ]);
+  const playlists: PlaylistSummary[] = [];
+  let offset = 0;
+  const pageSize = 50;
 
-  const playlists = playlistsResponse.items.map(mapPlaylistToSummary);
+  // Page through all playlists (safety cap to avoid runaway loops)
+  while (true) {
+    const page = await fetchSpotifyUserPlaylists(accessToken, { limit: pageSize, offset });
+    playlists.push(...page.items.map(mapPlaylistToSummary));
+    if (!page.next) break;
+    offset += page.items.length;
+    if (offset > 2000) break;
+  }
+
+  const likedSongs = await fetchSpotifyLikedTracksPreview(accessToken);
 
   return {
     likedSongs,

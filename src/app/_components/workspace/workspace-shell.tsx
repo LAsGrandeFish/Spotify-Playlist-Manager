@@ -1,9 +1,12 @@
 "use client";
 
 import { useCallback, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 
 import PlaylistRailClient from "@/app/_components/library/playlist-rail-client";
-import ReviewQueue from "@/app/_components/review/review-queue";
+import PlaylistViewer from "@/app/_components/review/playlist-viewer";
+import ReviewStage, { type ReviewSummaryData } from "@/app/_components/review/review-stage";
+import ReviewSummary from "@/app/_components/review/review-summary";
 import type { PlaylistRailData } from "@/lib/spotify/library";
 import type { QueueData, QueueSource } from "@/lib/spotify/queue";
 
@@ -20,10 +23,30 @@ export default function WorkspaceShell({
   initialQueueData,
   initialQueueError = null,
 }: WorkspaceShellProps) {
+  const router = useRouter();
   const [queueData, setQueueData] = useState<QueueData | null>(initialQueueData);
   const [queueError, setQueueError] = useState<string | null>(initialQueueError);
   const [loading, setLoading] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
+  const [mode, setMode] = useState<"view" | "review" | "summary">("view");
+  const [reviewSessionKey, setReviewSessionKey] = useState(0);
+  const [summaryData, setSummaryData] = useState<ReviewSummaryData | null>(null);
+  const [selectedMeta, setSelectedMeta] = useState<{
+    title: string;
+    total: number;
+    artworkUrl: string | null;
+  }>(() => ({
+    title:
+      initialQueueData?.source.type === "playlist"
+        ? (initialQueueData.source.name ?? "Playlist")
+        : "Liked Songs",
+    total: initialQueueData?.total ?? playlistRailData?.likedSongs?.total ?? 0,
+    artworkUrl:
+      initialQueueData?.source.type === "playlist"
+        ? (playlistRailData?.playlists.find(p => p.id === initialQueueData.source.id)?.images?.[0]
+            ?.url ?? null)
+        : (playlistRailData?.likedSongs?.artwork?.url ?? null),
+  }));
 
   const activeId = useMemo(() => {
     if (queueData?.source.type === "playlist") return queueData.source.id;
@@ -31,7 +54,7 @@ export default function WorkspaceShell({
   }, [queueData]);
 
   const handleSelect = useCallback(
-    async (item: { id: string; type: "liked" | "playlist" }) => {
+    async (item: { id: string; name: string; type: "liked" | "playlist" }) => {
       if (!playlistRailData) return;
 
       const nextSource: QueueSource =
@@ -40,11 +63,29 @@ export default function WorkspaceShell({
           : {
               type: "playlist",
               id: item.id,
+              name: item.name,
             };
 
       setLoading(true);
       setLoadingMore(false);
       setQueueError(null);
+      setMode("view");
+      const playlistMeta =
+        item.type === "liked"
+          ? {
+              title: "Liked Songs",
+              total: playlistRailData?.likedSongs?.total ?? 0,
+              artworkUrl: playlistRailData?.likedSongs?.artwork?.url ?? null,
+            }
+          : (() => {
+              const found = playlistRailData?.playlists.find(p => p.id === item.id);
+              return {
+                title: item.name,
+                total: found?.totalTracks ?? 0,
+                artworkUrl: found?.images?.[0]?.url ?? null,
+              };
+            })();
+      setSelectedMeta(playlistMeta);
       try {
         const response = await fetch("/api/queue", {
           method: "POST",
@@ -114,38 +155,72 @@ export default function WorkspaceShell({
   }, [queueData, loadingMore]);
 
   return (
-    <div className="mt-6 grid gap-5 lg:grid-cols-[280px_1fr]">
-      <div className="self-start lg:sticky lg:top-24 lg:w-[260px]" style={{ maxHeight: "80vh" }}>
-        <PlaylistRailClient
-          data={
-            playlistRailData ?? {
-              likedSongs: { total: 0, artwork: null },
-              playlists: [],
+    <div
+      className={
+        mode === "summary"
+          ? "mt-6 flex w-full justify-center"
+          : "mt-6 grid gap-5 lg:grid-cols-[280px_1fr]"
+      }
+    >
+      {mode !== "summary" && (
+        <div className="self-start lg:sticky lg:top-24 lg:w-[260px]" style={{ maxHeight: "80vh" }}>
+          <PlaylistRailClient
+            data={
+              playlistRailData ?? {
+                likedSongs: { total: 0, artwork: null },
+                playlists: [],
+              }
             }
-          }
-          appearance="workspace"
-          activeId={activeId}
-          onSelect={handleSelect}
-        />
-      </div>
-      <div className="flex flex-col gap-3">
-        <ReviewQueue
-          data={loading ? null : queueData}
-          isAuthenticated
-          error={queueError}
-          appearance="workspace"
-        />
-        {queueData?.nextOffset != null && (
-          <div className="flex justify-center">
-            <button
-              type="button"
-              onClick={handleLoadMore}
-              disabled={loadingMore}
-              className="rounded-full border border-emerald-500/60 bg-emerald-600/20 px-4 py-2 text-sm font-semibold text-emerald-200 transition hover:border-emerald-400 hover:bg-emerald-500/30 disabled:cursor-not-allowed disabled:opacity-60"
-            >
-              {loadingMore ? "Loading more..." : "Load more tracks"}
-            </button>
-          </div>
+            appearance="workspace"
+            activeId={activeId}
+            onSelect={item => handleSelect({ ...item, name: item.name })}
+          />
+        </div>
+      )}
+      <div className={mode === "summary" ? "w-full max-w-6xl" : "flex flex-col gap-3"}>
+        {mode === "view" ? (
+          <PlaylistViewer
+            data={loading ? null : queueData}
+            meta={selectedMeta}
+            loading={loading}
+            error={queueError}
+            onReview={() => setMode("review")}
+            onLoadMore={queueData?.nextOffset != null ? handleLoadMore : undefined}
+            loadingMore={loadingMore}
+          />
+        ) : mode === "review" ? (
+          <ReviewStage
+            key={reviewSessionKey}
+            playlistRailData={playlistRailData}
+            queueData={loading ? null : queueData}
+            loading={loading}
+            error={queueError}
+            onLoadMore={queueData?.nextOffset != null ? handleLoadMore : undefined}
+            loadingMore={loadingMore}
+            playlistMeta={{ title: selectedMeta.title, artworkUrl: selectedMeta.artworkUrl }}
+            onFinish={summary => {
+              setSummaryData(summary);
+              setMode("summary");
+            }}
+          />
+        ) : (
+          summaryData && (
+            <ReviewSummary
+              summary={summaryData}
+              onConfirm={() => {
+                setSummaryData({ ...summaryData });
+                setMode("view");
+                setSummaryData(null);
+                setReviewSessionKey(key => key + 1);
+                router.refresh();
+              }}
+              onRestart={() => {
+                setMode("review");
+                setSummaryData(null);
+                setReviewSessionKey(key => key + 1);
+              }}
+            />
+          )
         )}
       </div>
     </div>

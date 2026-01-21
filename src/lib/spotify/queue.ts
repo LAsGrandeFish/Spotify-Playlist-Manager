@@ -16,6 +16,8 @@ export type QueueTrack = {
   artists: string;
   album: string;
   durationMs: number;
+  uri: string | null;
+  previewUrl: string | null;
   artworkUrl: string | null;
   addedAt: string;
 };
@@ -25,6 +27,7 @@ export type QueueData = {
   tracks: QueueTrack[];
   total: number;
   nextOffset: number | null;
+  offset: number;
 };
 
 export const fetchQueueData = async (
@@ -43,10 +46,13 @@ export const fetchQueueData = async (
         artists: item.track.artists.map(artist => artist.name).join(", "),
         album: item.track.album.name,
         durationMs: item.track.duration_ms,
+        uri: item.track.uri ?? null,
+        previewUrl: item.track.preview_url ?? null,
         artworkUrl: item.track.album.images[0]?.url ?? null,
         addedAt: item.added_at,
       })),
       total: likedTracks.total,
+      offset,
       nextOffset: likedTracks.next ? offset + likedTracks.items.length : null,
     };
   }
@@ -66,10 +72,13 @@ export const fetchQueueData = async (
         artists: item.track.artists.map(artist => artist.name).join(", "),
         album: item.track.album.name,
         durationMs: item.track.duration_ms,
+        uri: item.track.uri ?? null,
+        previewUrl: item.track.preview_url ?? null,
         artworkUrl: item.track.album.images[0]?.url ?? null,
         addedAt: item.added_at,
       })),
     total: playlistTracks.total,
+    offset,
     nextOffset: playlistTracks.next ? offset + playlistTracks.items.length : null,
   };
 };
