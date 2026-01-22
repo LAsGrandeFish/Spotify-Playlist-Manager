@@ -43,8 +43,10 @@ Local development uses SQLite via Prisma.
 1. Ensure `.env.local` contains:
 
    ```env
-   DATABASE_URL="file:./prisma/dev.db"
+   DATABASE_URL="file:./dev.db"
    ```
+
+   Prisma CLI reads `.env` (root) as well. We keep `DATABASE_URL` in both `.env` and `.env.local`.
 
 2. Initialize the schema when ready:
 

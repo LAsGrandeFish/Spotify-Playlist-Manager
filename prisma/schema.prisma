@@ -49,6 +49,7 @@ model ReviewTrack {
 
   @@index([sessionId])
   @@index([trackId])
+  @@unique([sessionId, trackId])
 }
 
 model ReviewAction {
@@ -71,4 +72,5 @@ model ReviewTrackTarget {
 
   @@index([reviewTrackId])
   @@index([playlistId])
+  @@unique([reviewTrackId, playlistId])
 }

@@ -56,6 +56,11 @@ type ReviewStageProps = {
     title: string;
     artworkUrl: string | null;
   };
+  spotifyUser: {
+    spotifyId: string;
+    displayName: string | null;
+    email: string | null;
+  } | null;
   onFinish?: (summary: ReviewSummaryData) => void;
 };
 
@@ -109,6 +114,7 @@ export default function ReviewStage({
   onLoadMore,
   loadingMore = false,
   playlistMeta,
+  spotifyUser,
   onFinish,
 }: ReviewStageProps) {
   const [trackStates, setTrackStates] = useState<TrackState[]>(() =>
@@ -144,6 +150,8 @@ export default function ReviewStage({
   const lastAutoPlayTrackIdRef = useRef<string | null>(null);
   const rafRef = useRef<number | null>(null);
   const lastTickRef = useRef<number | null>(null);
+  const [reviewSessionId, setReviewSessionId] = useState<string | null>(null);
+  const persistedTrackIdsRef = useRef<Set<string>>(new Set());
 
   useEffect(() => {
     setTrackStates((queueData?.tracks ?? []).map(track => ({ ...track, action: "pending" })));
@@ -158,6 +166,8 @@ export default function ReviewStage({
     setCurrentTime(0);
     setDuration(30);
     lastAutoPlayTrackIdRef.current = null;
+    setReviewSessionId(null);
+    persistedTrackIdsRef.current = new Set();
   }, [queueData]);
 
   useEffect(() => {
@@ -193,6 +203,65 @@ export default function ReviewStage({
       setDuration(30);
     }
   }, [currentTrack?.durationMs]);
+
+  useEffect(() => {
+    if (!queueData || !spotifyUser || reviewSessionId) return;
+    const createSession = async () => {
+      try {
+        const response = await fetch("/api/review/sessions", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            user: spotifyUser,
+            source: queueData.source,
+            tracks: queueData.tracks,
+          }),
+        });
+        if (!response.ok) {
+          const body = await response.json().catch(() => ({}));
+          throw new Error(body?.error || "Failed to create review session.");
+        }
+        const data: { sessionId: string } = await response.json();
+        setReviewSessionId(data.sessionId);
+        persistedTrackIdsRef.current = new Set(queueData.tracks.map(track => track.id));
+      } catch (err) {
+        console.error("Failed to create review session:", err);
+      }
+    };
+    createSession();
+  }, [queueData, reviewSessionId, spotifyUser]);
+
+  useEffect(() => {
+    if (!queueData || !reviewSessionId) return;
+    const existing = persistedTrackIdsRef.current;
+    const newTracks = queueData.tracks.filter(track => !existing.has(track.id));
+    if (newTracks.length === 0) return;
+    const startIndex = queueData.tracks.length - newTracks.length;
+    const appendTracks = async () => {
+      try {
+        const response = await fetch(`/api/review/sessions/${reviewSessionId}/tracks`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            tracks: newTracks,
+            startIndex,
+          }),
+        });
+        if (!response.ok) {
+          const body = await response.json().catch(() => ({}));
+          throw new Error(body?.error || "Failed to append review tracks.");
+        }
+        newTracks.forEach(track => existing.add(track.id));
+      } catch (err) {
+        console.error("Failed to append review tracks:", err);
+      }
+    };
+    appendTracks();
+  }, [queueData, reviewSessionId]);
 
   useEffect(() => {
     if (rafRef.current) {
@@ -636,9 +705,22 @@ export default function ReviewStage({
         next[activeIndex] = { ...current, action };
         return next;
       });
+      if (reviewSessionId && currentTrack) {
+        fetch(`/api/review/sessions/${reviewSessionId}/tracks/${currentTrack.id}`, {
+          method: "PATCH",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            action: action.toUpperCase(),
+          }),
+        }).catch(err => {
+          console.error("Failed to persist track action:", err);
+        });
+      }
       setActiveIndex(index => Math.min(totalTracks - 1, index + 1));
     },
-    [activeIndex, totalTracks],
+    [activeIndex, currentTrack, reviewSessionId, totalTracks],
   );
 
   const undo = useCallback(() => {
@@ -704,6 +786,14 @@ export default function ReviewStage({
     // Placeholder: record action to history (not persisted)
     if (selectedPlaylists.size > 0 && currentTrack) {
       const targets = Array.from(selectedPlaylists);
+      const targetPayload = targets
+        .map(targetId => {
+          const match = allPlaylists.find(playlist => playlist.id === targetId);
+          return match
+            ? { playlistId: match.id, playlistName: match.name }
+            : { playlistId: targetId, playlistName: null };
+        })
+        .filter(Boolean);
       const membershipResults = await Promise.all(
         targets.map(async playlistId => {
           const ids = await fetchPlaylistTrackIds(playlistId);
@@ -742,10 +832,29 @@ export default function ReviewStage({
           [currentTrack.id]: (prev[currentTrack.id] ?? 0) + adds,
         }));
       }
+      if (reviewSessionId && targetPayload.length > 0) {
+        fetch(`/api/review/sessions/${reviewSessionId}/tracks/${currentTrack.id}/targets`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ targets: targetPayload }),
+        }).catch(err => {
+          console.error("Failed to persist playlist targets:", err);
+        });
+      }
     }
     setSelectedPlaylists(new Set());
     setIsAddMode(false);
-  }, [activeIndex, currentTrack, fetchPlaylistTrackIds, isAddMode, selectedPlaylists]);
+  }, [
+    activeIndex,
+    allPlaylists,
+    currentTrack,
+    fetchPlaylistTrackIds,
+    isAddMode,
+    reviewSessionId,
+    selectedPlaylists,
+  ]);
 
   const handleNewPlaylist = useCallback(() => {
     if (!newPlaylistName.trim()) return;

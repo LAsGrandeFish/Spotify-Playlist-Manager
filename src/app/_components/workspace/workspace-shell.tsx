@@ -14,6 +14,11 @@ type WorkspaceShellProps = {
   playlistRailData: PlaylistRailData | null;
   initialQueueData: QueueData | null;
   initialQueueError?: string | null;
+  spotifyUser: {
+    spotifyId: string;
+    displayName: string | null;
+    email: string | null;
+  } | null;
 };
 
 const DEFAULT_SOURCE: QueueSource = { type: "liked" };
@@ -22,6 +27,7 @@ export default function WorkspaceShell({
   playlistRailData,
   initialQueueData,
   initialQueueError = null,
+  spotifyUser,
 }: WorkspaceShellProps) {
   const router = useRouter();
   const [queueData, setQueueData] = useState<QueueData | null>(initialQueueData);
@@ -198,6 +204,7 @@ export default function WorkspaceShell({
             onLoadMore={queueData?.nextOffset != null ? handleLoadMore : undefined}
             loadingMore={loadingMore}
             playlistMeta={{ title: selectedMeta.title, artworkUrl: selectedMeta.artworkUrl }}
+            spotifyUser={spotifyUser}
             onFinish={summary => {
               setSummaryData(summary);
               setMode("summary");
