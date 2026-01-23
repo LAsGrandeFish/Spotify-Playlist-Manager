@@ -49,7 +49,7 @@ export async function POST(request: NextRequest) {
         userId: user.id,
         sourceType: body.source.type === "liked" ? "LIKED" : "PLAYLIST",
         sourceId: body.source.type === "playlist" ? body.source.id : null,
-        sourceName: body.source.type === "playlist" ? body.source.name ?? null : "Liked Songs",
+        sourceName: body.source.type === "playlist" ? (body.source.name ?? null) : "Liked Songs",
         tracks: {
           createMany: {
             data: Array.from(uniqueTracks.values()).map((track, index) => ({

@@ -42,7 +42,9 @@ export async function POST(
     });
 
     const existingIds = new Set(existing.map(item => item.trackId));
-    const newTracks = Array.from(incomingTracks.values()).filter(track => !existingIds.has(track.id));
+    const newTracks = Array.from(incomingTracks.values()).filter(
+      track => !existingIds.has(track.id),
+    );
 
     if (newTracks.length === 0) {
       return NextResponse.json({ added: 0 });
