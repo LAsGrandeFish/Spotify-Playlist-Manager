@@ -152,22 +152,60 @@ export default function ReviewStage({
   const lastTickRef = useRef<number | null>(null);
   const [reviewSessionId, setReviewSessionId] = useState<string | null>(null);
   const persistedTrackIdsRef = useRef<Set<string>>(new Set());
+  const persistedActionsRef = useRef<Record<string, TrackAction>>({});
+  const persistedAddCountsRef = useRef<Record<string, number>>({});
+  const sessionLookupKeyRef = useRef<string | null>(null);
+  const [sessionLookupDone, setSessionLookupDone] = useState(false);
+  const lastSourceKeyRef = useRef<string | null>(null);
+  const [resumePrompt, setResumePrompt] = useState<{
+    sessionId: string;
+    pendingCount: number;
+    reviewedCount: number;
+  } | null>(null);
 
   useEffect(() => {
-    setTrackStates((queueData?.tracks ?? []).map(track => ({ ...track, action: "pending" })));
-    setActiveIndex(0);
-    historyRef.current = [];
-    setSelectedPlaylists(new Set());
-    setIsAddMode(false);
-    setLastActionLabel("No actions yet.");
-    setPlaybackSource("none");
-    setActiveTrackUri(null);
-    setIsPlaying(false);
-    setCurrentTime(0);
-    setDuration(30);
-    lastAutoPlayTrackIdRef.current = null;
-    setReviewSessionId(null);
-    persistedTrackIdsRef.current = new Set();
+    const nextSourceKey = queueData
+      ? queueData.source.type === "playlist"
+        ? `playlist:${queueData.source.id}`
+        : "liked"
+      : null;
+    const sourceChanged = nextSourceKey !== lastSourceKeyRef.current;
+    lastSourceKeyRef.current = nextSourceKey;
+
+    const previousActions = new Map(trackStates.map(track => [track.id, track.action]));
+    const persistedActions = persistedActionsRef.current;
+    const nextTracks = (queueData?.tracks ?? []).map(track => ({
+      ...track,
+      action: previousActions.get(track.id) ?? persistedActions[track.id] ?? "pending",
+    }));
+
+    setTrackStates(nextTracks);
+
+    const mergedAddCounts: Record<string, number> = {
+      ...persistedAddCountsRef.current,
+      ...addCounts,
+    };
+    setAddCounts(mergedAddCounts);
+
+    if (sourceChanged) {
+      setActiveIndex(0);
+      historyRef.current = [];
+      setSelectedPlaylists(new Set());
+      setIsAddMode(false);
+      setLastActionLabel("No actions yet.");
+      setPlaybackSource("none");
+      setActiveTrackUri(null);
+      setIsPlaying(false);
+      setCurrentTime(0);
+      setDuration(30);
+      lastAutoPlayTrackIdRef.current = null;
+      setReviewSessionId(null);
+      persistedTrackIdsRef.current = new Set();
+      persistedActionsRef.current = {};
+      persistedAddCountsRef.current = {};
+      sessionLookupKeyRef.current = null;
+      setSessionLookupDone(false);
+    }
   }, [queueData]);
 
   useEffect(() => {
@@ -196,6 +234,36 @@ export default function ReviewStage({
   const canUseFullPlayback = Boolean(currentTrack?.uri && playbackToken && deviceId);
   const playbackUnavailable = !previewUrl && !canUseFullPlayback;
 
+  const findFirstPendingIndex = useCallback(
+    (actionMap: Record<string, TrackAction>, tracks: QueueTrack[]) => {
+      const index = tracks.findIndex(track => (actionMap[track.id] ?? "pending") === "pending");
+      return index === -1 ? null : index;
+    },
+    [],
+  );
+
+  const applyPersistedState = useCallback(
+    (sessionId: string) => {
+      const actionMap = persistedActionsRef.current;
+      const addCountMap = persistedAddCountsRef.current;
+      setReviewSessionId(sessionId);
+      setTrackStates(prev =>
+        prev.map(track => ({
+          ...track,
+          action: actionMap[track.id] ?? track.action,
+        })),
+      );
+      setAddCounts(addCountMap);
+      if (queueData) {
+        const firstPendingIndex = findFirstPendingIndex(actionMap, queueData.tracks);
+        if (firstPendingIndex !== null) {
+          setActiveIndex(firstPendingIndex);
+        }
+      }
+    },
+    [findFirstPendingIndex, queueData],
+  );
+
   useEffect(() => {
     if (currentTrack?.durationMs) {
       setDuration(currentTrack.durationMs / 1000);
@@ -205,36 +273,107 @@ export default function ReviewStage({
   }, [currentTrack?.durationMs]);
 
   useEffect(() => {
-    if (!queueData || !spotifyUser || reviewSessionId) return;
-    const createSession = async () => {
+    if (!queueData || !spotifyUser) return;
+    const sourceKey =
+      queueData.source.type === "playlist" ? `playlist:${queueData.source.id}` : "liked";
+    if (sessionLookupKeyRef.current === sourceKey) return;
+    sessionLookupKeyRef.current = sourceKey;
+    setSessionLookupDone(false);
+    const fetchSession = async () => {
       try {
-        const response = await fetch("/api/review/sessions", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            user: spotifyUser,
-            source: queueData.source,
-            tracks: queueData.tracks,
-          }),
+        const params = new URLSearchParams({
+          spotifyId: spotifyUser.spotifyId,
+          sourceType: queueData.source.type,
         });
-        if (!response.ok) {
-          const body = await response.json().catch(() => ({}));
-          throw new Error(body?.error || "Failed to create review session.");
+        if (queueData.source.type === "playlist") {
+          params.set("sourceId", queueData.source.id);
         }
-        const data: { sessionId: string } = await response.json();
-        setReviewSessionId(data.sessionId);
-        persistedTrackIdsRef.current = new Set(queueData.tracks.map(track => track.id));
+        const response = await fetch(`/api/review/sessions/active?${params.toString()}`);
+        if (!response.ok) {
+          setSessionLookupDone(true);
+          return;
+        }
+        const data: {
+          sessionId: string | null;
+          tracks?: { trackId: string; action: string; addCount: number }[];
+        } = await response.json();
+        if (data.sessionId) {
+          setReviewSessionId(data.sessionId);
+          const actionMap: Record<string, TrackAction> = {};
+          const addCountMap: Record<string, number> = {};
+          (data.tracks ?? []).forEach(track => {
+            const normalized = track.action?.toLowerCase?.() ?? "pending";
+            actionMap[track.trackId] =
+              normalized === "keep" || normalized === "remove" || normalized === "pending"
+                ? (normalized as TrackAction)
+                : "pending";
+            if (track.addCount > 0) {
+              addCountMap[track.trackId] = track.addCount;
+            }
+          });
+          persistedActionsRef.current = actionMap;
+          persistedAddCountsRef.current = addCountMap;
+          const pendingCount = Object.values(actionMap).filter(
+            action => action === "pending",
+          ).length;
+          const reviewedCount = Object.values(actionMap).filter(
+            action => action !== "pending",
+          ).length;
+          if (reviewedCount > 0 || Object.keys(addCountMap).length > 0) {
+            setResumePrompt({
+              sessionId: data.sessionId,
+              pendingCount,
+              reviewedCount,
+            });
+          } else {
+            applyPersistedState(data.sessionId);
+          }
+        }
+        setSessionLookupDone(true);
       } catch (err) {
-        console.error("Failed to create review session:", err);
+        console.error("Failed to load review session:", err);
+        setSessionLookupDone(true);
       }
     };
-    createSession();
-  }, [queueData, reviewSessionId, spotifyUser]);
+    fetchSession();
+  }, [applyPersistedState, queueData, spotifyUser]);
+
+  const createSession = useCallback(async () => {
+    if (!queueData || !spotifyUser) return;
+    try {
+      const response = await fetch("/api/review/sessions", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          user: spotifyUser,
+          source: queueData.source,
+          tracks: queueData.tracks,
+        }),
+      });
+      if (!response.ok) {
+        const body = await response.json().catch(() => ({}));
+        throw new Error(body?.error || "Failed to create review session.");
+      }
+      const data: { sessionId: string } = await response.json();
+      setReviewSessionId(data.sessionId);
+      persistedTrackIdsRef.current = new Set(queueData.tracks.map(track => track.id));
+    } catch (err) {
+      console.error("Failed to create review session:", err);
+    }
+  }, [queueData, spotifyUser]);
+
+  useEffect(() => {
+    if (!queueData || !spotifyUser || reviewSessionId || !sessionLookupDone) return;
+    if (!resumePrompt) {
+      createSession();
+    }
+  }, [createSession, queueData, resumePrompt, reviewSessionId, sessionLookupDone, spotifyUser]);
 
   useEffect(() => {
     if (!queueData || !reviewSessionId) return;
+    if (!spotifyUser) return;
     const existing = persistedTrackIdsRef.current;
     const newTracks = queueData.tracks.filter(track => !existing.has(track.id));
     if (newTracks.length === 0) return;
@@ -245,6 +384,7 @@ export default function ReviewStage({
           method: "POST",
           headers: {
             "Content-Type": "application/json",
+            "x-spotify-id": spotifyUser.spotifyId,
           },
           body: JSON.stringify({
             tracks: newTracks,
@@ -261,7 +401,7 @@ export default function ReviewStage({
       }
     };
     appendTracks();
-  }, [queueData, reviewSessionId]);
+  }, [queueData, reviewSessionId, spotifyUser]);
 
   useEffect(() => {
     if (rafRef.current) {
@@ -705,11 +845,12 @@ export default function ReviewStage({
         next[activeIndex] = { ...current, action };
         return next;
       });
-      if (reviewSessionId && currentTrack) {
+      if (reviewSessionId && currentTrack && spotifyUser) {
         fetch(`/api/review/sessions/${reviewSessionId}/tracks/${currentTrack.id}`, {
           method: "PATCH",
           headers: {
             "Content-Type": "application/json",
+            "x-spotify-id": spotifyUser.spotifyId,
           },
           body: JSON.stringify({
             action: action.toUpperCase(),
@@ -720,7 +861,7 @@ export default function ReviewStage({
       }
       setActiveIndex(index => Math.min(totalTracks - 1, index + 1));
     },
-    [activeIndex, currentTrack, reviewSessionId, totalTracks],
+    [activeIndex, currentTrack, reviewSessionId, spotifyUser, totalTracks],
   );
 
   const undo = useCallback(() => {
@@ -754,6 +895,43 @@ export default function ReviewStage({
     });
     setIsAddMode(true);
   }, []);
+
+  const closeSession = useCallback(
+    async (sessionId: string) => {
+      if (!spotifyUser) return;
+      try {
+        await fetch(`/api/review/sessions/${sessionId}`, {
+          method: "PATCH",
+          headers: {
+            "Content-Type": "application/json",
+            "x-spotify-id": spotifyUser.spotifyId,
+          },
+          body: JSON.stringify({ status: "COMPLETED" }),
+        });
+      } catch (err) {
+        console.error("Failed to close review session:", err);
+      }
+    },
+    [spotifyUser],
+  );
+
+  const discardPersistedState = useCallback(async () => {
+    if (!resumePrompt) return;
+    await closeSession(resumePrompt.sessionId);
+    persistedActionsRef.current = {};
+    persistedAddCountsRef.current = {};
+    setAddCounts({});
+    setResumePrompt(null);
+    setReviewSessionId(null);
+    setSessionLookupDone(true);
+    await createSession();
+  }, [closeSession, createSession, resumePrompt]);
+
+  const resumePersistedState = useCallback(() => {
+    if (!resumePrompt) return;
+    setResumePrompt(null);
+    applyPersistedState(resumePrompt.sessionId);
+  }, [applyPersistedState, resumePrompt]);
 
   const fetchPlaylistTrackIds = useCallback(
     async (playlistId: string) => {
@@ -832,11 +1010,12 @@ export default function ReviewStage({
           [currentTrack.id]: (prev[currentTrack.id] ?? 0) + adds,
         }));
       }
-      if (reviewSessionId && targetPayload.length > 0) {
+      if (reviewSessionId && targetPayload.length > 0 && spotifyUser) {
         fetch(`/api/review/sessions/${reviewSessionId}/tracks/${currentTrack.id}/targets`, {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
+            "x-spotify-id": spotifyUser.spotifyId,
           },
           body: JSON.stringify({ targets: targetPayload }),
         }).catch(err => {
@@ -853,6 +1032,7 @@ export default function ReviewStage({
     fetchPlaylistTrackIds,
     isAddMode,
     reviewSessionId,
+    spotifyUser,
     selectedPlaylists,
   ]);
 
@@ -1075,12 +1255,16 @@ export default function ReviewStage({
                     </div>
                   </div>
                 )}
-                renderThumb={({ props }) => (
-                  <div
-                    {...props}
-                    className="h-3 w-3 rounded-full border border-emerald-200 bg-emerald-500 shadow"
-                  />
-                )}
+                renderThumb={({ props }) => {
+                  const { key, ...rest } = props;
+                  return (
+                    <div
+                      key={key}
+                      {...rest}
+                      className="h-3 w-3 rounded-full border border-emerald-200 bg-emerald-500 shadow"
+                    />
+                  );
+                }}
               />
             </div>
             <span className="text-[11px] text-zinc-500">
@@ -1278,6 +1462,34 @@ export default function ReviewStage({
                 className="rounded-full border border-emerald-500 bg-emerald-600 px-3 py-1 font-semibold text-white hover:bg-emerald-500"
               >
                 Create
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {resumePrompt ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4">
+          <div className="w-full max-w-md rounded-2xl border border-zinc-800 bg-[#0d0d0d] p-6 text-white shadow-xl">
+            <h3 className="text-lg font-semibold">Resume review?</h3>
+            <p className="mt-2 text-sm text-zinc-400">
+              You have an in-progress review with {resumePrompt.reviewedCount} reviewed and{" "}
+              {resumePrompt.pendingCount} pending tracks.
+            </p>
+            <div className="mt-5 flex flex-wrap justify-end gap-2 text-sm">
+              <button
+                type="button"
+                onClick={discardPersistedState}
+                className="rounded-full border border-zinc-700 px-3 py-1 text-zinc-300 hover:border-emerald-500 hover:text-emerald-200"
+              >
+                Start fresh
+              </button>
+              <button
+                type="button"
+                onClick={resumePersistedState}
+                className="rounded-full border border-emerald-500 bg-emerald-600 px-3 py-1 font-semibold text-white hover:bg-emerald-500"
+              >
+                Resume
               </button>
             </div>
           </div>

@@ -3,6 +3,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import type { QueueSource, QueueTrack } from "@/lib/spotify/queue";
 
+export const runtime = "nodejs";
+
 type CreateSessionPayload = {
   user: {
     spotifyId: string;
@@ -24,19 +26,6 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Missing playlist source." }, { status: 400 });
     }
 
-    const user = await prisma.user.upsert({
-      where: { spotifyId: body.user.spotifyId },
-      update: {
-        displayName: body.user.displayName ?? undefined,
-        email: body.user.email ?? undefined,
-      },
-      create: {
-        spotifyId: body.user.spotifyId,
-        displayName: body.user.displayName ?? undefined,
-        email: body.user.email ?? undefined,
-      },
-    });
-
     const uniqueTracks = new Map<string, QueueTrack>();
     (body.tracks ?? []).forEach(track => {
       if (!uniqueTracks.has(track.id)) {
@@ -44,27 +33,46 @@ export async function POST(request: NextRequest) {
       }
     });
 
-    const session = await prisma.reviewSession.create({
-      data: {
-        userId: user.id,
-        sourceType: body.source.type === "liked" ? "LIKED" : "PLAYLIST",
-        sourceId: body.source.type === "playlist" ? body.source.id : null,
-        sourceName: body.source.type === "playlist" ? (body.source.name ?? null) : "Liked Songs",
-        tracks: {
-          createMany: {
-            data: Array.from(uniqueTracks.values()).map((track, index) => ({
-              trackId: track.id,
-              title: track.title,
-              artists: track.artists,
-              album: track.album,
-              durationMs: track.durationMs,
-              artworkUrl: track.artworkUrl,
-              addedAt: track.addedAt ? new Date(track.addedAt) : null,
-              position: index,
-            })),
-          },
+    const [user, session] = await prisma.$transaction(async tx => {
+      const upsertedUser = await tx.user.upsert({
+        where: { spotifyId: body.user.spotifyId },
+        update: {
+          displayName: body.user.displayName ?? undefined,
+          email: body.user.email ?? undefined,
         },
-      },
+        create: {
+          spotifyId: body.user.spotifyId,
+          displayName: body.user.displayName ?? undefined,
+          email: body.user.email ?? undefined,
+        },
+      });
+
+      const createdSession = await tx.reviewSession.create({
+        data: {
+          userId: upsertedUser.id,
+          sourceType: body.source.type === "liked" ? "LIKED" : "PLAYLIST",
+          sourceId: body.source.type === "playlist" ? body.source.id : null,
+          sourceName: body.source.type === "playlist" ? (body.source.name ?? null) : "Liked Songs",
+        },
+      });
+
+      if (uniqueTracks.size > 0) {
+        await tx.reviewTrack.createMany({
+          data: Array.from(uniqueTracks.values()).map((track, index) => ({
+            sessionId: createdSession.id,
+            trackId: track.id,
+            title: track.title,
+            artists: track.artists,
+            album: track.album,
+            durationMs: track.durationMs,
+            artworkUrl: track.artworkUrl,
+            addedAt: track.addedAt ? new Date(track.addedAt) : null,
+            position: index,
+          })),
+        });
+      }
+
+      return [upsertedUser, createdSession];
     });
 
     return NextResponse.json({ sessionId: session.id });

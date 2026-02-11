@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 
 import { prisma } from "@/lib/db";
 
+export const runtime = "nodejs";
+
 type UpdateTrackPayload = {
   action: "PENDING" | "KEEP" | "REMOVE";
 };
@@ -16,6 +18,19 @@ export async function PATCH(
   }
 
   try {
+    const spotifyId = request.headers.get("x-spotify-id");
+    if (!spotifyId) {
+      return NextResponse.json({ error: "Missing user context." }, { status: 400 });
+    }
+
+    const session = await prisma.reviewSession.findUnique({
+      where: { id: sessionId },
+      select: { user: { select: { spotifyId: true } } },
+    });
+    if (!session || session.user.spotifyId !== spotifyId) {
+      return NextResponse.json({ error: "Unauthorized session access." }, { status: 403 });
+    }
+
     const body = (await request.json()) as UpdateTrackPayload;
     if (!body?.action) {
       return NextResponse.json({ error: "Missing track action." }, { status: 400 });
