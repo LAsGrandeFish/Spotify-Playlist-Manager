@@ -130,6 +130,11 @@ export default function ReviewSummary({
           )}
         </div>
       </div>
+      {confirmStatus === "error" && (
+        <p className="mt-4 text-center text-xs text-amber-400">
+          Failed to apply Spotify changes. Please try again.
+        </p>
+      )}
 
       <div className="mt-8 grid gap-5 md:grid-cols-3">
         <Column title="Remove" colorClass="bg-red-600" tracks={summary.removed} />

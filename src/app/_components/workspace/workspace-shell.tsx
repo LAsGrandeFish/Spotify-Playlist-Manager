@@ -37,6 +37,7 @@ export default function WorkspaceShell({
   const [mode, setMode] = useState<"view" | "review" | "summary">("view");
   const [reviewSessionKey, setReviewSessionKey] = useState(0);
   const [summaryData, setSummaryData] = useState<ReviewSummaryData | null>(null);
+  const [confirmStatus, setConfirmStatus] = useState<"idle" | "success" | "error">("idle");
   const [selectedMeta, setSelectedMeta] = useState<{
     title: string;
     total: number;
@@ -214,12 +215,37 @@ export default function WorkspaceShell({
           summaryData && (
             <ReviewSummary
               summary={summaryData}
+              confirmStatus={confirmStatus}
               onConfirm={() => {
-                setSummaryData({ ...summaryData });
-                setMode("view");
-                setSummaryData(null);
-                setReviewSessionKey(key => key + 1);
-                router.refresh();
+                if (!summaryData.sessionId) {
+                  setMode("view");
+                  setSummaryData(null);
+                  setReviewSessionKey(key => key + 1);
+                  router.refresh();
+                  return;
+                }
+                setConfirmStatus("idle");
+                fetch(`/api/review/sessions/${summaryData.sessionId}/confirm`, {
+                  method: "POST",
+                  headers: {
+                    "x-spotify-id": spotifyUser?.spotifyId ?? "",
+                  },
+                })
+                  .then(async response => {
+                    if (!response.ok) {
+                      const body = await response.json().catch(() => ({}));
+                      throw new Error(body?.error || "Failed to confirm review.");
+                    }
+                    setConfirmStatus("success");
+                    setMode("view");
+                    setSummaryData(null);
+                    setReviewSessionKey(key => key + 1);
+                    router.refresh();
+                  })
+                  .catch(error => {
+                    console.error("Failed to confirm review:", error);
+                    setConfirmStatus("error");
+                  });
               }}
               onRestart={() => {
                 setMode("review");

@@ -85,6 +85,7 @@ export type SummaryTrack = {
 };
 
 export type ReviewSummaryData = {
+  sessionId: string | null;
   playlistTitle: string;
   artworkUrl: string | null;
   removed: SummaryTrack[];
@@ -1417,6 +1418,7 @@ export default function ReviewStage({
               }));
             const pendingCount = trackStates.filter(t => t.action === "pending").length;
             onFinish?.({
+              sessionId: reviewSessionId,
               playlistTitle: playlistMeta.title,
               artworkUrl: playlistMeta.artworkUrl,
               removed,
