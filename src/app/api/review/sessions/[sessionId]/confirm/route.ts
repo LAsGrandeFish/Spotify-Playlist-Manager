@@ -9,7 +9,12 @@ import {
   removeTracksFromPlaylist,
 } from "@/lib/spotify/api";
 import { SPOTIFY_COOKIE_KEYS } from "@/lib/spotify/auth";
-import { ensureSpotifyTokens, parseSpotifyTokenPayload } from "@/lib/spotify/session";
+import {
+  clearSpotifyTokenCookie,
+  ensureSpotifyTokens,
+  parseSpotifyTokenPayload,
+  setSpotifyTokenCookie,
+} from "@/lib/spotify/session";
 
 export const runtime = "nodejs";
 
@@ -64,7 +69,9 @@ export async function POST(
     }
     const refreshedTokens = await ensureSpotifyTokens(parsedToken);
     if (!refreshedTokens) {
-      return NextResponse.json({ error: "Spotify session expired." }, { status: 401 });
+      const response = NextResponse.json({ error: "Spotify session expired." }, { status: 401 });
+      clearSpotifyTokenCookie(response);
+      return response;
     }
 
     const accessToken = refreshedTokens.accessToken;
@@ -132,11 +139,13 @@ export async function POST(
       });
     }
 
-    return NextResponse.json({
+    const response = NextResponse.json({
       removed: removedTracks.length,
       addedPlaylists: Array.from(playlistIdMap.values()).length,
       dryRun,
     });
+    setSpotifyTokenCookie(response, refreshedTokens);
+    return response;
   } catch (error) {
     console.error("Failed to confirm review session:", error);
     return NextResponse.json({ error: "Failed to apply Spotify changes." }, { status: 500 });

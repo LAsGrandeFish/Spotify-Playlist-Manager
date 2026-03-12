@@ -60,6 +60,10 @@ export default function WorkspaceShell({
     return "liked-songs";
   }, [queueData]);
 
+  const redirectToLogin = useCallback(() => {
+    window.location.assign("/api/auth/login");
+  }, []);
+
   const handleSelect = useCallback(
     async (item: { id: string; name: string; type: "liked" | "playlist" }) => {
       if (!playlistRailData) return;
@@ -104,6 +108,10 @@ export default function WorkspaceShell({
 
         if (!response.ok) {
           const body = await response.json().catch(() => ({}));
+          if (response.status === 401) {
+            redirectToLogin();
+            return;
+          }
           throw new Error(body?.error || "Failed to load playlist tracks.");
         }
 
@@ -117,7 +125,7 @@ export default function WorkspaceShell({
         setLoading(false);
       }
     },
-    [playlistRailData],
+    [playlistRailData, redirectToLogin],
   );
 
   const handleLoadMore = useCallback(async () => {
@@ -139,6 +147,10 @@ export default function WorkspaceShell({
 
       if (!response.ok) {
         const body = await response.json().catch(() => ({}));
+        if (response.status === 401) {
+          redirectToLogin();
+          return;
+        }
         throw new Error(body?.error || "Failed to load more tracks.");
       }
 
@@ -159,7 +171,7 @@ export default function WorkspaceShell({
     } finally {
       setLoadingMore(false);
     }
-  }, [queueData, loadingMore]);
+  }, [queueData, loadingMore, redirectToLogin]);
 
   return (
     <div
@@ -233,6 +245,10 @@ export default function WorkspaceShell({
                 })
                   .then(async response => {
                     if (!response.ok) {
+                      if (response.status === 401) {
+                        redirectToLogin();
+                        return;
+                      }
                       const body = await response.json().catch(() => ({}));
                       throw new Error(body?.error || "Failed to confirm review.");
                     }
