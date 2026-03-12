@@ -23,6 +23,21 @@ type WorkspaceShellProps = {
 
 const DEFAULT_SOURCE: QueueSource = { type: "liked" };
 
+type ConfirmApiPayload = {
+  error?: string;
+  dryRun: boolean;
+  removed: { requested: number; applied: number };
+  added: { requested: number; applied: number };
+  playlists: { totalTargets: number; created: number; skipped: number };
+  failures?: Array<{
+    stage: "remove" | "create-playlist" | "add";
+    targetId?: string;
+    chunkSize?: number;
+    message: string;
+  }>;
+  status?: "success" | "partial_failure";
+};
+
 export default function WorkspaceShell({
   playlistRailData,
   initialQueueData,
@@ -38,6 +53,14 @@ export default function WorkspaceShell({
   const [reviewSessionKey, setReviewSessionKey] = useState(0);
   const [summaryData, setSummaryData] = useState<ReviewSummaryData | null>(null);
   const [confirmStatus, setConfirmStatus] = useState<"idle" | "success" | "error">("idle");
+  const [confirmErrorMessage, setConfirmErrorMessage] = useState<string | null>(null);
+  const [confirmInProgress, setConfirmInProgress] = useState(false);
+  const [confirmStage, setConfirmStage] = useState<string | null>(null);
+  const [confirmStats, setConfirmStats] = useState<{
+    removed?: { requested: number; applied: number } | null;
+    added?: { requested: number; applied: number } | null;
+    playlists?: { totalTargets: number; created: number; skipped: number } | null;
+  } | null>(null);
   const [selectedMeta, setSelectedMeta] = useState<{
     title: string;
     total: number;
@@ -228,6 +251,10 @@ export default function WorkspaceShell({
             <ReviewSummary
               summary={summaryData}
               confirmStatus={confirmStatus}
+              confirmErrorMessage={confirmErrorMessage}
+              confirmInProgress={confirmInProgress}
+              confirmStage={confirmStage}
+              confirmStats={confirmStats}
               onConfirm={() => {
                 if (!summaryData.sessionId) {
                   setMode("view");
@@ -237,6 +264,10 @@ export default function WorkspaceShell({
                   return;
                 }
                 setConfirmStatus("idle");
+                setConfirmErrorMessage(null);
+                setConfirmInProgress(true);
+                setConfirmStage("Submitting review actions");
+                setConfirmStats(null);
                 fetch(`/api/review/sessions/${summaryData.sessionId}/confirm`, {
                   method: "POST",
                   headers: {
@@ -244,15 +275,31 @@ export default function WorkspaceShell({
                   },
                 })
                   .then(async response => {
+                    setConfirmStage("Applying Spotify changes");
+                    const body: ConfirmApiPayload = await response.json().catch(() => ({
+                      dryRun: false,
+                      removed: { requested: 0, applied: 0 },
+                      added: { requested: 0, applied: 0 },
+                      playlists: { totalTargets: 0, created: 0, skipped: 0 },
+                    }));
+                    setConfirmStats({
+                      removed: body.removed,
+                      added: body.added,
+                      playlists: body.playlists,
+                    });
+
                     if (!response.ok) {
                       if (response.status === 401) {
                         redirectToLogin();
                         return;
                       }
-                      const body = await response.json().catch(() => ({}));
                       throw new Error(body?.error || "Failed to confirm review.");
                     }
+                    setConfirmStage("Finalizing session");
                     setConfirmStatus("success");
+                    setConfirmErrorMessage(null);
+                    setConfirmInProgress(false);
+                    setConfirmStage(null);
                     setMode("view");
                     setSummaryData(null);
                     setReviewSessionKey(key => key + 1);
@@ -261,9 +308,17 @@ export default function WorkspaceShell({
                   .catch(error => {
                     console.error("Failed to confirm review:", error);
                     setConfirmStatus("error");
+                    setConfirmInProgress(false);
+                    setConfirmStage(null);
+                    setConfirmErrorMessage(
+                      error instanceof Error ? error.message : "Failed to confirm review.",
+                    );
                   });
               }}
               onRestart={() => {
+                setConfirmInProgress(false);
+                setConfirmStage(null);
+                setConfirmStats(null);
                 setMode("review");
                 setSummaryData(null);
                 setReviewSessionKey(key => key + 1);

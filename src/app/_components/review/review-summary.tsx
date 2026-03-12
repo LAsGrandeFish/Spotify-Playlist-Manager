@@ -9,6 +9,14 @@ type ReviewSummaryProps = {
   onConfirm?: () => void;
   onRestart?: () => void;
   confirmStatus?: "idle" | "success" | "error";
+  confirmErrorMessage?: string | null;
+  confirmInProgress?: boolean;
+  confirmStage?: string | null;
+  confirmStats?: {
+    removed?: { requested: number; applied: number } | null;
+    added?: { requested: number; applied: number } | null;
+    playlists?: { totalTargets: number; created: number; skipped: number } | null;
+  } | null;
 };
 
 const Column = ({
@@ -73,6 +81,10 @@ export default function ReviewSummary({
   onConfirm,
   onRestart,
   confirmStatus = "idle",
+  confirmErrorMessage = null,
+  confirmInProgress = false,
+  confirmStage = null,
+  confirmStats = null,
 }: ReviewSummaryProps) {
   const removedCount = summary.removed.length;
   const keptCount = summary.kept.length;
@@ -92,13 +104,19 @@ export default function ReviewSummary({
           <button
             type="button"
             onClick={onConfirm}
+            disabled={confirmInProgress}
             className="rounded-full bg-emerald-600 px-5 py-2 text-sm font-semibold text-white transition hover:bg-emerald-500"
           >
-            {confirmStatus === "success" ? "Confirmed" : "Confirm"}
+            {confirmInProgress
+              ? "Applying..."
+              : confirmStatus === "success"
+                ? "Confirmed"
+                : "Confirm"}
           </button>
           <button
             type="button"
             onClick={onRestart}
+            disabled={confirmInProgress}
             className="rounded-full bg-red-600 px-5 py-2 text-sm font-semibold text-white transition hover:bg-red-500"
           >
             Restart
@@ -132,8 +150,33 @@ export default function ReviewSummary({
       </div>
       {confirmStatus === "error" && (
         <p className="mt-4 text-center text-xs text-amber-400">
-          Failed to apply Spotify changes. Please try again.
+          {confirmErrorMessage ?? "Failed to apply Spotify changes. Please try again."}
         </p>
+      )}
+      {(confirmInProgress || confirmStats) && (
+        <div className="mt-4 rounded-xl border border-zinc-800 bg-[#131313] px-4 py-3 text-xs text-zinc-300">
+          {confirmInProgress && (
+            <p className="font-medium text-emerald-300">
+              {confirmStage ? `${confirmStage}...` : "Applying Spotify changes..."}
+            </p>
+          )}
+          {confirmStats?.removed && (
+            <p className="mt-1">
+              Remove: {confirmStats.removed.applied}/{confirmStats.removed.requested} applied
+            </p>
+          )}
+          {confirmStats?.added && (
+            <p className="mt-1">
+              Add: {confirmStats.added.applied}/{confirmStats.added.requested} applied
+            </p>
+          )}
+          {confirmStats?.playlists && (
+            <p className="mt-1">
+              Playlists: {confirmStats.playlists.created} created, {confirmStats.playlists.skipped}{" "}
+              skipped ({confirmStats.playlists.totalTargets} targets)
+            </p>
+          )}
+        </div>
       )}
 
       <div className="mt-8 grid gap-5 md:grid-cols-3">

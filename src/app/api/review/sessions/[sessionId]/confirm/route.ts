@@ -26,6 +26,13 @@ const chunk = <T>(items: T[], size: number) => {
   return chunks;
 };
 
+type ConfirmFailure = {
+  stage: "remove" | "create-playlist" | "add";
+  targetId?: string;
+  chunkSize?: number;
+  message: string;
+};
+
 export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ sessionId: string }> },
@@ -76,17 +83,46 @@ export async function POST(
 
     const accessToken = refreshedTokens.accessToken;
     const removedTracks = session.tracks.filter(track => track.action === "REMOVE");
+    const failures: ConfirmFailure[] = [];
+    let removedRequested = 0;
+    let removedApplied = 0;
+    let addedRequested = 0;
+    let addedApplied = 0;
+    let createdPlaylists = 0;
+    let skippedPlaylists = 0;
 
     if (!dryRun && removedTracks.length > 0) {
       if (session.sourceType === "PLAYLIST" && session.sourceId) {
         const removeUris = removedTracks.map(track => `spotify:track:${track.trackId}`);
         for (const uriChunk of chunk(removeUris, 100)) {
-          await removeTracksFromPlaylist(accessToken, session.sourceId, uriChunk);
+          removedRequested += uriChunk.length;
+          try {
+            await removeTracksFromPlaylist(accessToken, session.sourceId, uriChunk);
+            removedApplied += uriChunk.length;
+          } catch (error) {
+            failures.push({
+              stage: "remove",
+              targetId: session.sourceId,
+              chunkSize: uriChunk.length,
+              message: error instanceof Error ? error.message : "Failed to remove chunk.",
+            });
+          }
         }
       } else if (session.sourceType === "LIKED") {
         const removeIds = removedTracks.map(track => track.trackId);
         for (const idChunk of chunk(removeIds, 50)) {
-          await removeTracksFromLibrary(accessToken, idChunk);
+          removedRequested += idChunk.length;
+          try {
+            await removeTracksFromLibrary(accessToken, idChunk);
+            removedApplied += idChunk.length;
+          } catch (error) {
+            failures.push({
+              stage: "remove",
+              targetId: "liked",
+              chunkSize: idChunk.length,
+              message: error instanceof Error ? error.message : "Failed to remove liked chunk.",
+            });
+          }
         }
       }
     }
@@ -111,11 +147,21 @@ export async function POST(
           playlistIdMap.set(playlistId, playlistId);
           continue;
         }
-        const created = await createSpotifyPlaylist(accessToken, session.user.spotifyId, {
-          name: data.name ?? "New Playlist",
-          public: false,
-        });
-        playlistIdMap.set(playlistId, created.id);
+        try {
+          const created = await createSpotifyPlaylist(accessToken, session.user.spotifyId, {
+            name: data.name ?? "New Playlist",
+            public: false,
+          });
+          createdPlaylists += 1;
+          playlistIdMap.set(playlistId, created.id);
+        } catch (error) {
+          skippedPlaylists += 1;
+          failures.push({
+            stage: "create-playlist",
+            targetId: playlistId,
+            message: error instanceof Error ? error.message : "Failed to create playlist.",
+          });
+        }
       } else {
         playlistIdMap.set(playlistId, playlistId);
       }
@@ -125,29 +171,68 @@ export async function POST(
       const resolvedId = playlistIdMap.get(originalId);
       if (!resolvedId) continue;
       const trackUris = Array.from(data.trackIds).map(trackId => `spotify:track:${trackId}`);
+      addedRequested += trackUris.length;
       if (!dryRun) {
         for (const uriChunk of chunk(trackUris, 100)) {
-          await addTracksToPlaylist(accessToken, resolvedId, uriChunk);
+          try {
+            await addTracksToPlaylist(accessToken, resolvedId, uriChunk);
+            addedApplied += uriChunk.length;
+          } catch (error) {
+            failures.push({
+              stage: "add",
+              targetId: resolvedId,
+              chunkSize: uriChunk.length,
+              message: error instanceof Error ? error.message : "Failed to add chunk.",
+            });
+          }
         }
+      } else {
+        addedApplied += trackUris.length;
       }
     }
 
-    if (!dryRun) {
+    if (!dryRun && failures.length === 0) {
       await prisma.reviewSession.update({
         where: { id: sessionId },
         data: { status: "CONFIRMED" },
       });
     }
 
-    const response = NextResponse.json({
-      removed: removedTracks.length,
-      addedPlaylists: Array.from(playlistIdMap.values()).length,
+    const result = {
       dryRun,
-    });
+      removed: {
+        requested: dryRun ? removedTracks.length : removedRequested,
+        applied: dryRun ? removedTracks.length : removedApplied,
+      },
+      added: {
+        requested: addedRequested,
+        applied: addedApplied,
+      },
+      playlists: {
+        totalTargets: playlistTargetMap.size,
+        created: createdPlaylists,
+        skipped: skippedPlaylists,
+      },
+      failures,
+      status: failures.length === 0 ? "success" : "partial_failure",
+    } as const;
+
+    const response =
+      failures.length === 0
+        ? NextResponse.json(result)
+        : NextResponse.json(
+            { error: "Some Spotify changes failed. See details and retry.", ...result },
+            { status: 500 },
+          );
     setSpotifyTokenCookie(response, refreshedTokens);
     return response;
   } catch (error) {
     console.error("Failed to confirm review session:", error);
-    return NextResponse.json({ error: "Failed to apply Spotify changes." }, { status: 500 });
+    return NextResponse.json(
+      {
+        error: error instanceof Error ? error.message : "Failed to apply Spotify changes.",
+      },
+      { status: 500 },
+    );
   }
 }
