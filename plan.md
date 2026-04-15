@@ -4,64 +4,88 @@
 
 - Keyboard-centric playlist review for power users with very large libraries.
 - Fast batch decisions: Keep / Remove / Add to playlist(s), then one Confirm.
+- Apply Spotify changes safely, with visible progress and recoverable failures.
 
-## MVP Scope (from design)
+## MVP Scope
 
-- AppShell (Left Rail: Library + Top Bar + Main: Review).
-- Review page with hotkeys: V (Keep), R (Remove), I (Add), Z (Undo), P (Play/Pause), X (Restart).
-- Batch Confirm modal + chunked Spotify API calls.
+- AppShell (Left Rail: Library + Top Bar + Main: View / Review / Summary).
+- Review page with hotkeys: `V` (Keep), `R` (Remove), `I` (Add/Confirm Add), `Z` (Undo), `P` (Play/Pause), `X` (Restart playback), `N` (New Playlist).
+- Batch confirm flow with chunked Spotify API calls.
+- Persistent review sessions so in-progress work can be resumed.
 
 ## Tech Stack
 
 - Next.js (App Router) + TypeScript + Tailwind.
 - Spotify OAuth (Auth Code + PKCE), Web API client, Web Playback SDK.
-- Persistent storage for review sessions (SQLite/Postgres + Prisma).
+- Prisma + SQLite for local dev, with production DB still to be chosen.
 
-## Current Review Workflow (supported)
+## Current State
 
-- **Select playlist:** via rail (hotkeys S/D/F/G/H/J/K/L on visible tiles), scroll ribbon with A / ;.
-- **View mode:** table with #, title/artists, album, duration; Review button; load more supported.
-- **Review mode:** ribbon + track card + actions panel.
-  - Ribbon: select playlists as add targets (green border); A / ; scroll; S-L select.
-  - Track card: shows current track info and playback controls (P play/pause, X restart).
-  - Track actions: V keep, R remove (advances), Z undo (undo or clear selections).
-  - Playlist actions: N new playlist (name modal, generated color cover), I add-to-playlist (enter add mode + select playlists + I to confirm). No Spotify write yet.
-  - Load more: available when more tracks exist (pagination append).
-- **Summary:** Confirm/Restart screen with removed/kept/added columns and counts.
+- **Library rail**
+  - Loads all playlists plus `Liked Songs`.
+  - Shows playlist count in the rail header.
+  - Supports selection and queue loading.
 
-## Not Yet Implemented
+- **View mode**
+  - Displays playlist hero, track table, metadata columns, and `Load more`.
+  - Keeps the left playlist rail visible.
 
-- Actual Spotify write calls for keep/remove/add.
-- Persisted review state (DB) + resumable sessions.
-- Confirm progress modal with per-action status.
-- Error reporting and retry strategy for Spotify writes.
+- **Review mode**
+  - Ribbon-based playlist targeting with hotkeys.
+  - Track card with playback controls and custom progress slider.
+  - Track actions: keep, remove, undo.
+  - Playlist actions: add to playlist, create local new playlist target.
+  - Supports paginated append while reviewing.
 
-## Implementation Plan (commit-friendly)
+- **Persistence**
+  - Review sessions, track actions, and add targets are stored in Prisma-backed tables.
+  - Existing in-progress sessions can be resumed.
+  - Additional loaded tracks are appended to the active review session.
 
-1. **DB foundation**
-   - Choose DB (SQLite for local dev, Postgres for prod) + Prisma schema.
-   - Tables: users, review_sessions, review_tracks, review_actions, playlist_targets.
-   - Commit: DB setup + migrations + seed helpers.
+- **Confirm flow**
+  - Applies real Spotify writes for:
+    - removing tracks from a playlist
+    - removing tracks from liked songs
+    - adding tracks to playlists
+    - creating new playlists for local review-created targets
+  - Uses chunked writes to respect Spotify API limits.
+  - Shows progress and result counts in the summary screen.
+  - Returns structured partial-failure diagnostics.
+  - Supports retrying only failed actions instead of replaying successful ones.
+  - Re-fetches the source queue after confirm and reconciles the refreshed total against the expected post-removal total.
 
-2. **Persist review state**
-   - Save review actions as they happen (keep/remove/add targets).
-   - Restore state on refresh or resume.
-   - Commit: session persistence + API routes.
+## Known Gaps
 
-3. **Spotify write layer**
-   - API routes to create playlist, add tracks, remove tracks.
-   - Chunking (max 100 tracks per call) + retries.
-   - Commit: write endpoints + shared Spotify API helpers.
+- No final production DB decision yet.
+- No dedicated post-confirm audit/history page yet.
+- No automated retry/backoff policy beyond manual retry of failed actions.
+- Existing lint warnings remain in a few unrelated files.
+- `plan.md` previously lagged behind implementation; this version is the current baseline.
 
-4. **Confirm progress modal**
-   - UI modal listing actions with live status.
-   - Show partial failures + retry button.
-   - Commit: modal UI + wiring to write endpoints.
+## Next Priorities
 
-5. **Post-confirm cleanup**
-   - Clear local session state, refresh playlist/queue.
-   - Commit: summary finalize + cleanup flow.
+1. **Warning cleanup**
+   - Resolve the existing React hook and unused variable warnings.
+   - Keep lint output clean before wider deployment work.
+
+2. **Production persistence**
+   - Choose the production database strategy.
+   - Validate Prisma setup for hosted deployment.
+   - Confirm whether adapter choice changes between local and production.
+
+3. **Deployment readiness**
+   - Lock down environment variables and redirect URI strategy.
+   - Verify Spotify dashboard settings for hosted usage.
+   - Decide hosting target and expected auth domain flow.
+
+4. **Write-path confidence**
+   - Add stronger verification around applied Spotify mutations.
+   - Consider logging/audit records for confirm attempts and outcomes.
+
+5. **UX polish**
+   - Improve confirm messaging and success/failure surfacing.
+   - Refine summary-state transitions and refresh behavior.
 
 ## How to start the app
 
-npm run dev -- --hostname 127.0.0.1 --port 3000
+`npm run dev -- --hostname 127.0.0.1 --port 3000`
