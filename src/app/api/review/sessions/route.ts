@@ -33,7 +33,7 @@ export async function POST(request: NextRequest) {
       }
     });
 
-    const [user, session] = await prisma.$transaction(async tx => {
+    const [, session] = await prisma.$transaction(async tx => {
       const upsertedUser = await tx.user.upsert({
         where: { spotifyId: body.user.spotifyId },
         update: {

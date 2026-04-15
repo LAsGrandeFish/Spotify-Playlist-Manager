@@ -173,20 +173,19 @@ export default function ReviewStage({
     const sourceChanged = nextSourceKey !== lastSourceKeyRef.current;
     lastSourceKeyRef.current = nextSourceKey;
 
-    const previousActions = new Map(trackStates.map(track => [track.id, track.action]));
     const persistedActions = persistedActionsRef.current;
-    const nextTracks = (queueData?.tracks ?? []).map(track => ({
-      ...track,
-      action: previousActions.get(track.id) ?? persistedActions[track.id] ?? "pending",
-    }));
+    setTrackStates(prevTracks => {
+      const previousActions = new Map(prevTracks.map(track => [track.id, track.action]));
+      return (queueData?.tracks ?? []).map(track => ({
+        ...track,
+        action: previousActions.get(track.id) ?? persistedActions[track.id] ?? "pending",
+      }));
+    });
 
-    setTrackStates(nextTracks);
-
-    const mergedAddCounts: Record<string, number> = {
+    setAddCounts(prevAddCounts => ({
       ...persistedAddCountsRef.current,
-      ...addCounts,
-    };
-    setAddCounts(mergedAddCounts);
+      ...prevAddCounts,
+    }));
 
     if (sourceChanged) {
       setActiveIndex(0);
