@@ -7,6 +7,7 @@ import type { ReviewSummaryData } from "@/app/_components/review/review-stage";
 type ReviewSummaryProps = {
   summary: ReviewSummaryData;
   onConfirm?: () => void;
+  onRetryFailures?: () => void;
   onRestart?: () => void;
   confirmStatus?: "idle" | "success" | "error";
   confirmErrorMessage?: string | null;
@@ -17,6 +18,7 @@ type ReviewSummaryProps = {
     added?: { requested: number; applied: number } | null;
     playlists?: { totalTargets: number; created: number; skipped: number } | null;
   } | null;
+  failedActionCount?: number;
 };
 
 const Column = ({
@@ -79,12 +81,14 @@ const Column = ({
 export default function ReviewSummary({
   summary,
   onConfirm,
+  onRetryFailures,
   onRestart,
   confirmStatus = "idle",
   confirmErrorMessage = null,
   confirmInProgress = false,
   confirmStage = null,
   confirmStats = null,
+  failedActionCount = 0,
 }: ReviewSummaryProps) {
   const removedCount = summary.removed.length;
   const keptCount = summary.kept.length;
@@ -113,6 +117,16 @@ export default function ReviewSummary({
                 ? "Confirmed"
                 : "Confirm"}
           </button>
+          {confirmStatus === "error" && failedActionCount > 0 ? (
+            <button
+              type="button"
+              onClick={onRetryFailures}
+              disabled={confirmInProgress}
+              className="rounded-full border border-sky-500/50 px-5 py-2 text-sm font-semibold text-sky-300 transition hover:border-sky-400 hover:text-sky-200"
+            >
+              Retry Failed Actions
+            </button>
+          ) : null}
           <button
             type="button"
             onClick={onRestart}
@@ -151,6 +165,12 @@ export default function ReviewSummary({
       {confirmStatus === "error" && (
         <p className="mt-4 text-center text-xs text-amber-400">
           {confirmErrorMessage ?? "Failed to apply Spotify changes. Please try again."}
+        </p>
+      )}
+      {confirmStatus === "error" && failedActionCount > 0 && (
+        <p className="mt-2 text-center text-xs text-zinc-500">
+          {failedActionCount} failed action{failedActionCount === 1 ? "" : "s"} can be retried
+          without re-running successful changes.
         </p>
       )}
       {(confirmInProgress || confirmStats) && (

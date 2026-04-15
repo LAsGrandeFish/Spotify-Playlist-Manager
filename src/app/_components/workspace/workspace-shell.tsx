@@ -32,7 +32,10 @@ type ConfirmApiPayload = {
   failures?: Array<{
     stage: "remove" | "create-playlist" | "add";
     targetId?: string;
+    originalTargetId?: string;
     chunkSize?: number;
+    trackIds?: string[];
+    playlistName?: string | null;
     message: string;
   }>;
   status?: "success" | "partial_failure";
@@ -47,6 +50,7 @@ export default function WorkspaceShell({
   const router = useRouter();
   const [queueData, setQueueData] = useState<QueueData | null>(initialQueueData);
   const [queueError, setQueueError] = useState<string | null>(initialQueueError);
+  const [queueNotice, setQueueNotice] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
   const [mode, setMode] = useState<"view" | "review" | "summary">("view");
@@ -61,6 +65,7 @@ export default function WorkspaceShell({
     added?: { requested: number; applied: number } | null;
     playlists?: { totalTargets: number; created: number; skipped: number } | null;
   } | null>(null);
+  const [confirmFailures, setConfirmFailures] = useState<ConfirmApiPayload["failures"]>([]);
   const [selectedMeta, setSelectedMeta] = useState<{
     title: string;
     total: number;
@@ -87,6 +92,70 @@ export default function WorkspaceShell({
     window.location.assign("/api/auth/login");
   }, []);
 
+  const fetchSourceQueue = useCallback(
+    async (source: QueueSource, options?: { offset?: number; limit?: number }) => {
+      const response = await fetch("/api/queue", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          source,
+          ...(options?.offset != null ? { offset: options.offset } : {}),
+          ...(options?.limit != null ? { limit: options.limit } : {}),
+        }),
+      });
+
+      if (!response.ok) {
+        const body = await response.json().catch(() => ({}));
+        if (response.status === 401) {
+          redirectToLogin();
+          return null;
+        }
+        throw new Error(body?.error || "Failed to load playlist tracks.");
+      }
+
+      return (await response.json()) as QueueData;
+    },
+    [redirectToLogin],
+  );
+
+  const reconcileCurrentSource = useCallback(
+    async (removedApplied: number) => {
+      if (!queueData) return;
+
+      const expectedTotal = Math.max(0, queueData.total - removedApplied);
+      const refreshedQueue = await fetchSourceQueue(queueData.source, {
+        limit: Math.max(queueData.tracks.length, 50),
+      });
+
+      if (!refreshedQueue) {
+        return;
+      }
+
+      setQueueData(refreshedQueue);
+      setSelectedMeta(prev => ({
+        ...prev,
+        total: refreshedQueue.total,
+        title:
+          refreshedQueue.source.type === "playlist"
+            ? (refreshedQueue.source.name ?? prev.title)
+            : "Liked Songs",
+      }));
+
+      if (refreshedQueue.total !== expectedTotal) {
+        setQueueNotice(
+          `Spotify changes applied, but reconciliation found ${refreshedQueue.total} songs instead of the expected ${expectedTotal}. Refresh again or verify in Spotify directly.`,
+        );
+      } else {
+        setQueueNotice(
+          "Spotify changes applied and the refreshed playlist matches the expected total.",
+        );
+      }
+    },
+    [fetchSourceQueue, queueData],
+  );
+
   const handleSelect = useCallback(
     async (item: { id: string; name: string; type: "liked" | "playlist" }) => {
       if (!playlistRailData) return;
@@ -103,6 +172,7 @@ export default function WorkspaceShell({
       setLoading(true);
       setLoadingMore(false);
       setQueueError(null);
+      setQueueNotice(null);
       setMode("view");
       const playlistMeta =
         item.type === "liked"
@@ -121,24 +191,10 @@ export default function WorkspaceShell({
             })();
       setSelectedMeta(playlistMeta);
       try {
-        const response = await fetch("/api/queue", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({ source: nextSource }),
-        });
-
-        if (!response.ok) {
-          const body = await response.json().catch(() => ({}));
-          if (response.status === 401) {
-            redirectToLogin();
-            return;
-          }
-          throw new Error(body?.error || "Failed to load playlist tracks.");
+        const data = await fetchSourceQueue(nextSource);
+        if (!data) {
+          return;
         }
-
-        const data: QueueData = await response.json();
         setQueueData(data);
       } catch (error) {
         console.error("Failed to fetch queue:", error);
@@ -148,36 +204,22 @@ export default function WorkspaceShell({
         setLoading(false);
       }
     },
-    [playlistRailData, redirectToLogin],
+    [fetchSourceQueue, playlistRailData],
   );
 
   const handleLoadMore = useCallback(async () => {
     if (!queueData || queueData.nextOffset == null || loadingMore) return;
     setLoadingMore(true);
     setQueueError(null);
+    setQueueNotice(null);
 
     try {
-      const response = await fetch("/api/queue", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          source: queueData.source,
-          offset: queueData.tracks.length,
-        }),
+      const data = await fetchSourceQueue(queueData.source, {
+        offset: queueData.tracks.length,
       });
-
-      if (!response.ok) {
-        const body = await response.json().catch(() => ({}));
-        if (response.status === 401) {
-          redirectToLogin();
-          return;
-        }
-        throw new Error(body?.error || "Failed to load more tracks.");
+      if (!data) {
+        return;
       }
-
-      const data: QueueData = await response.json();
       setQueueData(prev =>
         prev &&
         data.source.type === prev.source.type &&
@@ -194,7 +236,91 @@ export default function WorkspaceShell({
     } finally {
       setLoadingMore(false);
     }
-  }, [queueData, loadingMore, redirectToLogin]);
+  }, [fetchSourceQueue, queueData, loadingMore]);
+
+  const submitConfirm = useCallback(
+    async (retryFailures?: ConfirmApiPayload["failures"]) => {
+      if (!summaryData?.sessionId) {
+        setMode("view");
+        setSummaryData(null);
+        setReviewSessionKey(key => key + 1);
+        router.refresh();
+        return;
+      }
+
+      setConfirmStatus("idle");
+      setConfirmErrorMessage(null);
+      setConfirmInProgress(true);
+      setConfirmStage(
+        retryFailures?.length ? "Retrying failed actions" : "Submitting review actions",
+      );
+      if (!retryFailures?.length) {
+        setConfirmStats(null);
+      }
+
+      try {
+        const response = await fetch(`/api/review/sessions/${summaryData.sessionId}/confirm`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "x-spotify-id": spotifyUser?.spotifyId ?? "",
+          },
+          body: JSON.stringify(
+            retryFailures?.length
+              ? {
+                  retryFailures,
+                }
+              : {},
+          ),
+        });
+
+        setConfirmStage("Applying Spotify changes");
+        const body: ConfirmApiPayload = await response.json().catch(() => ({
+          dryRun: false,
+          removed: { requested: 0, applied: 0 },
+          added: { requested: 0, applied: 0 },
+          playlists: { totalTargets: 0, created: 0, skipped: 0 },
+          failures: [],
+        }));
+
+        setConfirmStats({
+          removed: body.removed,
+          added: body.added,
+          playlists: body.playlists,
+        });
+        setConfirmFailures(body.failures ?? []);
+
+        if (!response.ok) {
+          if (response.status === 401) {
+            redirectToLogin();
+            return;
+          }
+          throw new Error(body?.error || "Failed to confirm review.");
+        }
+
+        setConfirmStage("Finalizing session");
+        await reconcileCurrentSource(body.removed.applied);
+        setConfirmStatus("success");
+        setConfirmErrorMessage(null);
+        setConfirmFailures([]);
+        setConfirmInProgress(false);
+        setConfirmStage(null);
+        setMode("view");
+        setSummaryData(null);
+        setReviewSessionKey(key => key + 1);
+        router.refresh();
+      } catch (error) {
+        console.error("Failed to confirm review:", error);
+        setConfirmStatus("error");
+        setConfirmInProgress(false);
+        setConfirmStage(null);
+        setConfirmErrorMessage(
+          error instanceof Error ? error.message : "Failed to confirm review.",
+        );
+      }
+    },
+    [reconcileCurrentSource, redirectToLogin, router, spotifyUser?.spotifyId, summaryData],
+  );
 
   return (
     <div
@@ -226,6 +352,7 @@ export default function WorkspaceShell({
             meta={selectedMeta}
             loading={loading}
             error={queueError}
+            notice={queueNotice}
             onReview={() => setMode("review")}
             onLoadMore={queueData?.nextOffset != null ? handleLoadMore : undefined}
             loadingMore={loadingMore}
@@ -255,70 +382,14 @@ export default function WorkspaceShell({
               confirmInProgress={confirmInProgress}
               confirmStage={confirmStage}
               confirmStats={confirmStats}
-              onConfirm={() => {
-                if (!summaryData.sessionId) {
-                  setMode("view");
-                  setSummaryData(null);
-                  setReviewSessionKey(key => key + 1);
-                  router.refresh();
-                  return;
-                }
-                setConfirmStatus("idle");
-                setConfirmErrorMessage(null);
-                setConfirmInProgress(true);
-                setConfirmStage("Submitting review actions");
-                setConfirmStats(null);
-                fetch(`/api/review/sessions/${summaryData.sessionId}/confirm`, {
-                  method: "POST",
-                  headers: {
-                    "x-spotify-id": spotifyUser?.spotifyId ?? "",
-                  },
-                })
-                  .then(async response => {
-                    setConfirmStage("Applying Spotify changes");
-                    const body: ConfirmApiPayload = await response.json().catch(() => ({
-                      dryRun: false,
-                      removed: { requested: 0, applied: 0 },
-                      added: { requested: 0, applied: 0 },
-                      playlists: { totalTargets: 0, created: 0, skipped: 0 },
-                    }));
-                    setConfirmStats({
-                      removed: body.removed,
-                      added: body.added,
-                      playlists: body.playlists,
-                    });
-
-                    if (!response.ok) {
-                      if (response.status === 401) {
-                        redirectToLogin();
-                        return;
-                      }
-                      throw new Error(body?.error || "Failed to confirm review.");
-                    }
-                    setConfirmStage("Finalizing session");
-                    setConfirmStatus("success");
-                    setConfirmErrorMessage(null);
-                    setConfirmInProgress(false);
-                    setConfirmStage(null);
-                    setMode("view");
-                    setSummaryData(null);
-                    setReviewSessionKey(key => key + 1);
-                    router.refresh();
-                  })
-                  .catch(error => {
-                    console.error("Failed to confirm review:", error);
-                    setConfirmStatus("error");
-                    setConfirmInProgress(false);
-                    setConfirmStage(null);
-                    setConfirmErrorMessage(
-                      error instanceof Error ? error.message : "Failed to confirm review.",
-                    );
-                  });
-              }}
+              failedActionCount={confirmFailures?.length ?? 0}
+              onConfirm={() => void submitConfirm()}
+              onRetryFailures={() => void submitConfirm(confirmFailures)}
               onRestart={() => {
                 setConfirmInProgress(false);
                 setConfirmStage(null);
                 setConfirmStats(null);
+                setConfirmFailures([]);
                 setMode("review");
                 setSummaryData(null);
                 setReviewSessionKey(key => key + 1);
