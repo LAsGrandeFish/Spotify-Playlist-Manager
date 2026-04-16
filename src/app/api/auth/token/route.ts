@@ -1,13 +1,12 @@
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 
-import { isDevelopment } from "@/lib/env";
 import { SPOTIFY_COOKIE_KEYS } from "@/lib/spotify/auth";
 import {
-  SPOTIFY_SESSION_MAX_AGE_SECONDS,
+  clearSpotifyTokenCookie,
   ensureSpotifyTokens,
   parseSpotifyTokenPayload,
-  serializeSpotifyTokenPayload,
+  setSpotifyTokenCookie,
 } from "@/lib/spotify/session";
 
 export async function GET() {
@@ -21,7 +20,9 @@ export async function GET() {
 
   const refreshedTokens = await ensureSpotifyTokens(parsedToken);
   if (!refreshedTokens) {
-    return NextResponse.json({ error: "Spotify session expired." }, { status: 401 });
+    const response = NextResponse.json({ error: "Spotify session expired." }, { status: 401 });
+    clearSpotifyTokenCookie(response);
+    return response;
   }
 
   const requiredScopes = [
@@ -50,14 +51,7 @@ export async function GET() {
     expiresAt: refreshedTokens.expiresAt,
     scopes: Array.from(grantedScopes),
   });
-
-  response.cookies.set(SPOTIFY_COOKIE_KEYS.tokens, serializeSpotifyTokenPayload(refreshedTokens), {
-    httpOnly: true,
-    secure: !isDevelopment(),
-    sameSite: "lax",
-    path: "/",
-    maxAge: SPOTIFY_SESSION_MAX_AGE_SECONDS,
-  });
+  setSpotifyTokenCookie(response, refreshedTokens);
 
   return response;
 }

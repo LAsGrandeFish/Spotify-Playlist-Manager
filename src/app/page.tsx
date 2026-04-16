@@ -133,6 +133,15 @@ export default async function Home() {
             playlistRailData={playlistRailData}
             initialQueueData={queueData}
             initialQueueError={queueError}
+            spotifyUser={
+              authState.profile
+                ? {
+                    spotifyId: authState.profile.id,
+                    displayName: authState.profile.display_name ?? null,
+                    email: authState.profile.email ?? null,
+                  }
+                : null
+            }
           />
         </div>
       </main>

@@ -3,7 +3,12 @@ import { cookies } from "next/headers";
 
 import { SPOTIFY_COOKIE_KEYS } from "@/lib/spotify/auth";
 import { fetchQueueData, type QueueSource } from "@/lib/spotify/queue";
-import { ensureSpotifyTokens, parseSpotifyTokenPayload } from "@/lib/spotify/session";
+import {
+  clearSpotifyTokenCookie,
+  ensureSpotifyTokens,
+  parseSpotifyTokenPayload,
+  setSpotifyTokenCookie,
+} from "@/lib/spotify/session";
 
 export async function POST(request: NextRequest) {
   try {
@@ -27,11 +32,15 @@ export async function POST(request: NextRequest) {
 
     const refreshedTokens = await ensureSpotifyTokens(parsedToken);
     if (!refreshedTokens) {
-      return NextResponse.json({ error: "Spotify session expired." }, { status: 401 });
+      const response = NextResponse.json({ error: "Spotify session expired." }, { status: 401 });
+      clearSpotifyTokenCookie(response);
+      return response;
     }
 
     const data = await fetchQueueData(refreshedTokens.accessToken, source, { offset, limit });
-    return NextResponse.json(data);
+    const response = NextResponse.json(data);
+    setSpotifyTokenCookie(response, refreshedTokens);
+    return response;
   } catch (error) {
     console.error("Queue API error:", error);
     return NextResponse.json({ error: "Failed to load queue." }, { status: 500 });

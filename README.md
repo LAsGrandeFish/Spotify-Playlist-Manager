@@ -36,15 +36,17 @@ Visit [http://127.0.0.1:3000](http://127.0.0.1:3000) to see the current UI shell
 
 On the homepage, click **Log in with Spotify** to run the full PKCE flow. A successful login displays your Spotify profile at the top of the page and stores tokens in an HTTP-only cookie. Tokens are refreshed automatically as they near expiry; use **Log out** to clear the cookie and restart the flow.
 
-## Database (Phase 1)
+## Database
 
-Local development uses SQLite via Prisma.
+The app now uses Postgres via Prisma in local development and production.
 
 1. Ensure `.env.local` contains:
 
    ```env
-   DATABASE_URL="file:./prisma/dev.db"
+   DATABASE_URL="postgresql://postgres:postgres@localhost:5432/spotify_playlist_manager?schema=public"
    ```
+
+   Prisma CLI reads `.env` (root) as well. Keep the same `DATABASE_URL` in both `.env` and `.env.local` if you want Prisma CLI and Next.js to use the same database.
 
 2. Initialize the schema when ready:
 
@@ -67,8 +69,10 @@ Local development uses SQLite via Prisma.
 - [x] Playlist rail + playlist viewer
 - [x] Review mode with hotkeys + summary screen
 - [x] Web Playback SDK integration (full playback)
-- [ ] Persist review sessions (DB + Prisma)
-- [ ] Batch confirmation modal with chunked Spotify API writes
+- [x] Persist review sessions (DB + Prisma)
+- [x] Batch confirmation flow with chunked Spotify API writes
+- [x] Retry failed Spotify write actions
+- [x] Post-confirm source reconciliation
 
 ## Notes
 

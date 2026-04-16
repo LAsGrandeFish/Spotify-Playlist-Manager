@@ -4,8 +4,8 @@ CREATE TABLE "User" (
     "spotifyId" TEXT NOT NULL,
     "displayName" TEXT,
     "email" TEXT,
-    "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    "updatedAt" DATETIME NOT NULL
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL
 );
 
 -- CreateTable
@@ -16,8 +16,8 @@ CREATE TABLE "ReviewSession" (
     "sourceId" TEXT,
     "sourceName" TEXT,
     "status" TEXT NOT NULL DEFAULT 'IN_PROGRESS',
-    "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    "updatedAt" DATETIME NOT NULL,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL,
     CONSTRAINT "ReviewSession_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User" ("id") ON DELETE RESTRICT ON UPDATE CASCADE
 );
 
@@ -31,11 +31,11 @@ CREATE TABLE "ReviewTrack" (
     "album" TEXT NOT NULL,
     "durationMs" INTEGER NOT NULL,
     "artworkUrl" TEXT,
-    "addedAt" DATETIME,
+    "addedAt" TIMESTAMP(3),
     "position" INTEGER NOT NULL,
     "action" TEXT NOT NULL DEFAULT 'PENDING',
-    "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    "updatedAt" DATETIME NOT NULL,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL,
     CONSTRAINT "ReviewTrack_sessionId_fkey" FOREIGN KEY ("sessionId") REFERENCES "ReviewSession" ("id") ON DELETE RESTRICT ON UPDATE CASCADE
 );
 
@@ -44,7 +44,7 @@ CREATE TABLE "ReviewAction" (
     "id" TEXT NOT NULL PRIMARY KEY,
     "reviewTrackId" TEXT NOT NULL,
     "action" TEXT NOT NULL,
-    "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     CONSTRAINT "ReviewAction_reviewTrackId_fkey" FOREIGN KEY ("reviewTrackId") REFERENCES "ReviewTrack" ("id") ON DELETE RESTRICT ON UPDATE CASCADE
 );
 
@@ -54,7 +54,7 @@ CREATE TABLE "ReviewTrackTarget" (
     "reviewTrackId" TEXT NOT NULL,
     "playlistId" TEXT NOT NULL,
     "playlistName" TEXT,
-    "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     CONSTRAINT "ReviewTrackTarget_reviewTrackId_fkey" FOREIGN KEY ("reviewTrackId") REFERENCES "ReviewTrack" ("id") ON DELETE RESTRICT ON UPDATE CASCADE
 );
 

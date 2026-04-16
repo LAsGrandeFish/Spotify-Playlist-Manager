@@ -65,6 +65,7 @@ export default function PlaylistRailClient({
 }: PlaylistRailClientProps) {
   const isWorkspace = appearance === "workspace";
   const maxHeightClass = isWorkspace ? "max-h-[75vh]" : "max-h-[24rem]";
+  const playlistCount = data.playlists.length;
 
   const items = useMemo<ListItem[]>(() => {
     const likedArtwork = data.likedSongs.artwork?.url ?? null;
@@ -149,14 +150,24 @@ export default function PlaylistRailClient({
           >
             Your Library
           </p>
-          <p
-            className={clsx(
-              "text-base font-semibold",
-              isWorkspace ? "text-zinc-100" : "text-zinc-800",
-            )}
-          >
-            Playlists
-          </p>
+          <div className="flex items-center gap-2">
+            <p
+              className={clsx(
+                "text-base font-semibold",
+                isWorkspace ? "text-zinc-100" : "text-zinc-800",
+              )}
+            >
+              Playlists
+            </p>
+            <span
+              className={clsx(
+                "rounded-full px-2 py-0.5 text-xs font-medium",
+                isWorkspace ? "bg-[#1a1a1a] text-zinc-400" : "bg-zinc-200 text-zinc-600",
+              )}
+            >
+              {playlistCount}
+            </span>
+          </div>
         </div>
       </div>
       <div

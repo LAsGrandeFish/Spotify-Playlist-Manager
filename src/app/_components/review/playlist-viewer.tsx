@@ -18,6 +18,7 @@ type PlaylistViewerProps = {
   meta: PlaylistMeta;
   loading: boolean;
   error: string | null;
+  notice?: string | null;
   onReview?: () => void;
   onLoadMore?: () => void;
   loadingMore?: boolean;
@@ -83,6 +84,7 @@ export default function PlaylistViewer({
   meta,
   loading,
   error,
+  notice = null,
   onReview,
   onLoadMore,
   loadingMore = false,
@@ -134,6 +136,12 @@ export default function PlaylistViewer({
           </div>
         </div>
       </div>
+
+      {notice ? (
+        <div className="mx-6 mb-4 rounded-2xl border border-sky-500/30 bg-sky-500/10 px-4 py-3 text-sm text-sky-200 sm:mx-8">
+          {notice}
+        </div>
+      ) : null}
 
       <div className="overflow-hidden rounded-[28px] border-t border-white/5 bg-black/40">
         <div className="grid grid-cols-[40px_minmax(0,1fr)_minmax(0,1fr)_80px] items-center gap-4 px-3 py-2 text-[11px] uppercase tracking-wide text-zinc-500">

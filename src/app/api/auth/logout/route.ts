@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextResponse } from "next/server";
 
 import { isDevelopment, spotifyEnv } from "@/lib/env";
 import { SPOTIFY_COOKIE_KEYS } from "@/lib/spotify/auth";
@@ -11,7 +11,7 @@ const baseCookieOptions = {
   maxAge: 0,
 };
 
-export async function POST(request: NextRequest): Promise<NextResponse> {
+export async function POST(): Promise<NextResponse> {
   const response = NextResponse.redirect(new URL("/", spotifyEnv.redirectUri()));
 
   response.cookies.set(SPOTIFY_COOKIE_KEYS.tokens, "", {
@@ -24,7 +24,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   return response;
 }
 
-export async function GET(request: NextRequest): Promise<NextResponse> {
+export async function GET(): Promise<NextResponse> {
   const response = NextResponse.redirect(new URL("/", spotifyEnv.redirectUri()));
 
   response.cookies.set(SPOTIFY_COOKIE_KEYS.tokens, "", {

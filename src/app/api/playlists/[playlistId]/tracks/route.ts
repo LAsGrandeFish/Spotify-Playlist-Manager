@@ -3,7 +3,12 @@ import { cookies } from "next/headers";
 
 import { SPOTIFY_COOKIE_KEYS } from "@/lib/spotify/auth";
 import { fetchSpotifyPlaylistTracks } from "@/lib/spotify/api";
-import { ensureSpotifyTokens, parseSpotifyTokenPayload } from "@/lib/spotify/session";
+import {
+  clearSpotifyTokenCookie,
+  ensureSpotifyTokens,
+  parseSpotifyTokenPayload,
+  setSpotifyTokenCookie,
+} from "@/lib/spotify/session";
 
 export async function GET(
   _request: NextRequest,
@@ -25,7 +30,9 @@ export async function GET(
 
     const refreshedTokens = await ensureSpotifyTokens(parsedToken);
     if (!refreshedTokens) {
-      return NextResponse.json({ error: "Spotify session expired." }, { status: 401 });
+      const response = NextResponse.json({ error: "Spotify session expired." }, { status: 401 });
+      clearSpotifyTokenCookie(response);
+      return response;
     }
 
     const ids: string[] = [];
@@ -48,7 +55,9 @@ export async function GET(
       offset += page.items.length;
     }
 
-    return NextResponse.json({ ids: ids.slice(0, MAX_TRACKS) });
+    const response = NextResponse.json({ ids: ids.slice(0, MAX_TRACKS) });
+    setSpotifyTokenCookie(response, refreshedTokens);
+    return response;
   } catch (error) {
     console.error("Failed to fetch playlist track ids:", error);
     return NextResponse.json({ error: "Failed to fetch playlist tracks." }, { status: 500 });

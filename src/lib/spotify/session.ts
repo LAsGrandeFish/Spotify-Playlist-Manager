@@ -1,5 +1,6 @@
-import { spotifyEnv } from "@/lib/env";
+import { isDevelopment, spotifyEnv } from "@/lib/env";
 import { SPOTIFY_COOKIE_KEYS, SPOTIFY_TOKEN_ENDPOINT } from "@/lib/spotify/auth";
+import { type NextResponse } from "next/server";
 
 export const TOKEN_REFRESH_BUFFER_MS = 60_000; // 1 minute
 export const SPOTIFY_SESSION_MAX_AGE_SECONDS = 60 * 60 * 24 * 30;
@@ -117,4 +118,27 @@ export const ensureSpotifyTokens = async (
     console.error("Failed to refresh Spotify tokens:", error);
     return null;
   }
+};
+
+export const setSpotifyTokenCookie = (
+  response: NextResponse,
+  tokens: SpotifyTokenPayload,
+): void => {
+  response.cookies.set(SPOTIFY_COOKIE_KEYS.tokens, serializeSpotifyTokenPayload(tokens), {
+    httpOnly: true,
+    secure: !isDevelopment(),
+    sameSite: "lax",
+    path: "/",
+    maxAge: SPOTIFY_SESSION_MAX_AGE_SECONDS,
+  });
+};
+
+export const clearSpotifyTokenCookie = (response: NextResponse): void => {
+  response.cookies.set(SPOTIFY_COOKIE_KEYS.tokens, "", {
+    httpOnly: true,
+    secure: !isDevelopment(),
+    sameSite: "lax",
+    path: "/",
+    maxAge: 0,
+  });
 };

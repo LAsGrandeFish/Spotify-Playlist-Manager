@@ -3,7 +3,7 @@ generator client {
 }
 
 datasource db {
-  provider = "sqlite"
+  provider = "postgresql"
 }
 
 model User {
@@ -27,6 +27,7 @@ model ReviewSession {
   updatedAt   DateTime             @updatedAt
   user        User                 @relation(fields: [userId], references: [id])
   tracks      ReviewTrack[]
+  confirmAttempts ReviewConfirmAttempt[]
 }
 
 model ReviewTrack {
@@ -49,6 +50,7 @@ model ReviewTrack {
 
   @@index([sessionId])
   @@index([trackId])
+  @@unique([sessionId, trackId])
 }
 
 model ReviewAction {
@@ -71,4 +73,29 @@ model ReviewTrackTarget {
 
   @@index([reviewTrackId])
   @@index([playlistId])
+  @@unique([reviewTrackId, playlistId])
+}
+
+model ReviewConfirmAttempt {
+  id                String        @id @default(cuid())
+  sessionId         String
+  status            String
+  dryRun            Boolean       @default(false)
+  removedRequested  Int           @default(0)
+  removedApplied    Int           @default(0)
+  addedRequested    Int           @default(0)
+  addedApplied      Int           @default(0)
+  totalTargets      Int           @default(0)
+  playlistsCreated  Int           @default(0)
+  playlistsSkipped  Int           @default(0)
+  failureCount      Int           @default(0)
+  failureLog        String?
+  errorMessage      String?
+  createdAt         DateTime      @default(now())
+  updatedAt         DateTime      @updatedAt
+  session           ReviewSession @relation(fields: [sessionId], references: [id])
+
+  @@index([sessionId])
+  @@index([status])
+  @@index([createdAt])
 }

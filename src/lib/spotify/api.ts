@@ -182,3 +182,78 @@ export const fetchSpotifyPlaylistTracks = async (
 
   return handleSpotifyResponse<SpotifyPaginatedResponse<SpotifyPlaylistTrackItem>>(response);
 };
+
+export type SpotifyCreatePlaylistPayload = {
+  name: string;
+  description?: string | null;
+  public?: boolean;
+};
+
+export const createSpotifyPlaylist = async (
+  accessToken: string,
+  userId: string,
+  payload: SpotifyCreatePlaylistPayload,
+): Promise<SpotifyPlaylist> => {
+  const response = await fetch(`${SPOTIFY_API_BASE_URL}/users/${userId}/playlists`, {
+    method: "POST",
+    headers: withAccessToken(accessToken),
+    body: JSON.stringify({
+      name: payload.name,
+      description: payload.description ?? null,
+      public: payload.public ?? false,
+    }),
+  });
+
+  return handleSpotifyResponse<SpotifyPlaylist>(response);
+};
+
+export const addTracksToPlaylist = async (
+  accessToken: string,
+  playlistId: string,
+  trackUris: string[],
+) => {
+  const response = await fetch(`${SPOTIFY_API_BASE_URL}/playlists/${playlistId}/tracks`, {
+    method: "POST",
+    headers: withAccessToken(accessToken),
+    body: JSON.stringify({
+      uris: trackUris,
+    }),
+  });
+
+  return handleSpotifyResponse<{ snapshot_id: string }>(response);
+};
+
+export const removeTracksFromPlaylist = async (
+  accessToken: string,
+  playlistId: string,
+  trackUris: string[],
+) => {
+  const response = await fetch(`${SPOTIFY_API_BASE_URL}/playlists/${playlistId}/tracks`, {
+    method: "DELETE",
+    headers: withAccessToken(accessToken),
+    body: JSON.stringify({
+      tracks: trackUris.map(uri => ({ uri })),
+    }),
+  });
+
+  return handleSpotifyResponse<{ snapshot_id: string }>(response);
+};
+
+export const removeTracksFromLibrary = async (accessToken: string, trackIds: string[]) => {
+  const params = new URLSearchParams({
+    ids: trackIds.join(","),
+  });
+
+  const response = await fetch(`${SPOTIFY_API_BASE_URL}/me/tracks?${params.toString()}`, {
+    method: "DELETE",
+    headers: withAccessToken(accessToken),
+  });
+
+  if (response.status === 401) {
+    throw new Error("Spotify access token expired or revoked.");
+  }
+  if (!response.ok) {
+    const errorBody = await response.text();
+    throw new Error(`Spotify API error (${response.status}): ${errorBody}`);
+  }
+};
