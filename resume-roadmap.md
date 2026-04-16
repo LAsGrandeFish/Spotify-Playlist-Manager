@@ -5,6 +5,7 @@ This file tracks the work needed to turn Spotify Playlist Manager into a stronge
 ## Goal
 
 Build a polished, technically credible personal project that demonstrates:
+
 - product thinking
 - thoughtful UX decisions
 - clean application architecture
