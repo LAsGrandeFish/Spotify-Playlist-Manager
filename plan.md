@@ -17,7 +17,7 @@
 
 - Next.js (App Router) + TypeScript + Tailwind.
 - Spotify OAuth (Auth Code + PKCE), Web API client, Web Playback SDK.
-- Prisma + SQLite for local dev, with production DB still to be chosen.
+- Prisma + Postgres across local development and production.
 
 ## Current State
 
@@ -56,33 +56,27 @@
 
 ## Known Gaps
 
-- No final production DB decision yet.
 - No dedicated post-confirm audit/history page yet.
 - No automated retry/backoff policy beyond manual retry of failed actions.
-- Existing lint warnings remain in a few unrelated files.
 - `plan.md` previously lagged behind implementation; this version is the current baseline.
 
 ## Next Priorities
 
-1. **Warning cleanup**
-   - Resolve the existing React hook and unused variable warnings.
-   - Keep lint output clean before wider deployment work.
+1. **Postgres environment rollout**
+   - Standardize `DATABASE_URL` in `.env` and `.env.local`.
+   - Run Prisma generate/migrate against a real Postgres instance.
+   - Verify review session persistence after the DB switch.
 
-2. **Production persistence**
-   - Choose the production database strategy.
-   - Validate Prisma setup for hosted deployment.
-   - Confirm whether adapter choice changes between local and production.
-
-3. **Deployment readiness**
+2. **Deployment readiness**
    - Lock down environment variables and redirect URI strategy.
    - Verify Spotify dashboard settings for hosted usage.
    - Decide hosting target and expected auth domain flow.
 
-4. **Write-path confidence**
+3. **Write-path confidence**
    - Add stronger verification around applied Spotify mutations.
    - Consider logging/audit records for confirm attempts and outcomes.
 
-5. **UX polish**
+4. **UX polish**
    - Improve confirm messaging and success/failure surfacing.
    - Refine summary-state transitions and refresh behavior.
 

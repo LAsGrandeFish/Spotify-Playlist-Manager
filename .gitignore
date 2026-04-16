@@ -17,9 +17,6 @@
 /.next/
 /out/
 
-# prisma
-/dev.db
-
 # production
 /build
 

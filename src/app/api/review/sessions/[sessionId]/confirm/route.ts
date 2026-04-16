@@ -45,6 +45,7 @@ export async function POST(
   { params }: { params: Promise<{ sessionId: string }> },
 ) {
   const { sessionId } = await params;
+  let confirmAttemptId: string | null = null;
   if (!sessionId) {
     return NextResponse.json({ error: "Missing session id." }, { status: 400 });
   }
@@ -106,6 +107,15 @@ export async function POST(
     const retryCreateFailures =
       retryFailures?.filter(failure => failure.stage === "create-playlist") ?? [];
     const retryAddFailures = retryFailures?.filter(failure => failure.stage === "add") ?? [];
+
+    const startedAttempt = await prisma.reviewConfirmAttempt.create({
+      data: {
+        sessionId,
+        status: "STARTED",
+        dryRun,
+      },
+    });
+    confirmAttemptId = startedAttempt.id;
 
     if (retryFailures) {
       if (session.sourceType === "PLAYLIST" && session.sourceId) {
@@ -314,6 +324,7 @@ export async function POST(
     }
 
     const result = {
+      attemptId: confirmAttemptId,
       dryRun,
       removed: {
         requested: dryRun ? removedTracks.length : removedRequested,
@@ -332,6 +343,23 @@ export async function POST(
       status: failures.length === 0 ? "success" : "partial_failure",
     } as const;
 
+    await prisma.reviewConfirmAttempt.update({
+      where: { id: confirmAttemptId },
+      data: {
+        status: failures.length === 0 ? "SUCCESS" : "PARTIAL_FAILURE",
+        removedRequested: result.removed.requested,
+        removedApplied: result.removed.applied,
+        addedRequested: result.added.requested,
+        addedApplied: result.added.applied,
+        totalTargets: result.playlists.totalTargets,
+        playlistsCreated: result.playlists.created,
+        playlistsSkipped: result.playlists.skipped,
+        failureCount: failures.length,
+        failureLog: failures.length > 0 ? JSON.stringify(failures) : null,
+        errorMessage: failures.length > 0 ? "Some Spotify changes failed. See failure log." : null,
+      },
+    });
+
     const response =
       failures.length === 0
         ? NextResponse.json(result)
@@ -342,10 +370,20 @@ export async function POST(
     setSpotifyTokenCookie(response, refreshedTokens);
     return response;
   } catch (error) {
+    const message = error instanceof Error ? error.message : "Failed to apply Spotify changes.";
+    if (confirmAttemptId) {
+      await prisma.reviewConfirmAttempt.update({
+        where: { id: confirmAttemptId },
+        data: {
+          status: "FAILED",
+          errorMessage: message,
+        },
+      });
+    }
     console.error("Failed to confirm review session:", error);
     return NextResponse.json(
       {
-        error: error instanceof Error ? error.message : "Failed to apply Spotify changes.",
+        error: message,
       },
       { status: 500 },
     );

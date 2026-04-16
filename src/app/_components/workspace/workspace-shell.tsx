@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 
 import PlaylistRailClient from "@/app/_components/library/playlist-rail-client";
@@ -25,6 +25,7 @@ const DEFAULT_SOURCE: QueueSource = { type: "liked" };
 
 type ConfirmApiPayload = {
   error?: string;
+  attemptId?: string | null;
   dryRun: boolean;
   removed: { requested: number; applied: number };
   added: { requested: number; applied: number };
@@ -39,6 +40,23 @@ type ConfirmApiPayload = {
     message: string;
   }>;
   status?: "success" | "partial_failure";
+};
+
+type ConfirmAttemptHistoryItem = {
+  id: string;
+  status: "STARTED" | "SUCCESS" | "PARTIAL_FAILURE" | "FAILED";
+  dryRun: boolean;
+  removedRequested: number;
+  removedApplied: number;
+  addedRequested: number;
+  addedApplied: number;
+  totalTargets: number;
+  playlistsCreated: number;
+  playlistsSkipped: number;
+  failureCount: number;
+  failureLog: string | null;
+  errorMessage: string | null;
+  createdAt: string;
 };
 
 export default function WorkspaceShell({
@@ -66,6 +84,8 @@ export default function WorkspaceShell({
     playlists?: { totalTargets: number; created: number; skipped: number } | null;
   } | null>(null);
   const [confirmFailures, setConfirmFailures] = useState<ConfirmApiPayload["failures"]>([]);
+  const [confirmAttempts, setConfirmAttempts] = useState<ConfirmAttemptHistoryItem[]>([]);
+  const [confirmAttemptsLoading, setConfirmAttemptsLoading] = useState(false);
   const [selectedMeta, setSelectedMeta] = useState<{
     title: string;
     total: number;
@@ -154,6 +174,35 @@ export default function WorkspaceShell({
       }
     },
     [fetchSourceQueue, queueData],
+  );
+
+  const loadConfirmAttempts = useCallback(
+    async (sessionId: string) => {
+      setConfirmAttemptsLoading(true);
+      try {
+        const response = await fetch(`/api/review/sessions/${sessionId}/attempts`, {
+          headers: {
+            "x-spotify-id": spotifyUser?.spotifyId ?? "",
+          },
+        });
+        const body = await response.json().catch(() => ({ attempts: [] }));
+
+        if (!response.ok) {
+          if (response.status === 401) {
+            redirectToLogin();
+            return;
+          }
+          throw new Error(body?.error || "Failed to load confirm attempts.");
+        }
+
+        setConfirmAttempts(body.attempts ?? []);
+      } catch (error) {
+        console.error("Failed to load confirm attempts:", error);
+      } finally {
+        setConfirmAttemptsLoading(false);
+      }
+    },
+    [redirectToLogin, spotifyUser?.spotifyId],
   );
 
   const handleSelect = useCallback(
@@ -289,6 +338,7 @@ export default function WorkspaceShell({
           playlists: body.playlists,
         });
         setConfirmFailures(body.failures ?? []);
+        await loadConfirmAttempts(summaryData.sessionId);
 
         if (!response.ok) {
           if (response.status === 401) {
@@ -319,8 +369,25 @@ export default function WorkspaceShell({
         );
       }
     },
-    [reconcileCurrentSource, redirectToLogin, router, spotifyUser?.spotifyId, summaryData],
+    [
+      loadConfirmAttempts,
+      reconcileCurrentSource,
+      redirectToLogin,
+      router,
+      spotifyUser?.spotifyId,
+      summaryData,
+    ],
   );
+
+  useEffect(() => {
+    if (mode !== "summary" || !summaryData?.sessionId) {
+      setConfirmAttempts([]);
+      setConfirmAttemptsLoading(false);
+      return;
+    }
+
+    void loadConfirmAttempts(summaryData.sessionId);
+  }, [loadConfirmAttempts, mode, summaryData?.sessionId]);
 
   return (
     <div
@@ -369,6 +436,8 @@ export default function WorkspaceShell({
             playlistMeta={{ title: selectedMeta.title, artworkUrl: selectedMeta.artworkUrl }}
             spotifyUser={spotifyUser}
             onFinish={summary => {
+              setConfirmAttempts([]);
+              setConfirmAttemptsLoading(false);
               setSummaryData(summary);
               setMode("summary");
             }}
@@ -383,6 +452,8 @@ export default function WorkspaceShell({
               confirmStage={confirmStage}
               confirmStats={confirmStats}
               failedActionCount={confirmFailures?.length ?? 0}
+              confirmAttempts={confirmAttempts}
+              confirmAttemptsLoading={confirmAttemptsLoading}
               onConfirm={() => void submitConfirm()}
               onRetryFailures={() => void submitConfirm(confirmFailures)}
               onRestart={() => {
@@ -390,6 +461,8 @@ export default function WorkspaceShell({
                 setConfirmStage(null);
                 setConfirmStats(null);
                 setConfirmFailures([]);
+                setConfirmAttempts([]);
+                setConfirmAttemptsLoading(false);
                 setMode("review");
                 setSummaryData(null);
                 setReviewSessionKey(key => key + 1);
