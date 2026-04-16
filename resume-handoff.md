@@ -7,6 +7,7 @@ This file is a compact handoff for starting a new chat/task without losing proje
 Spotify Playlist Manager is a keyboard-centric Next.js app for reviewing large Spotify libraries and batching playlist decisions before one confirm step.
 
 Core stack:
+
 - Next.js App Router
 - TypeScript
 - Tailwind
@@ -16,6 +17,7 @@ Core stack:
 ## Current Product State
 
 ### Library / Viewer
+
 - Left rail loads all playlists plus `Liked Songs`
 - Playlist count is shown in the rail header
 - Viewer mode shows:
@@ -25,6 +27,7 @@ Core stack:
   - `Load more`
 
 ### Review Mode
+
 - Ribbon-based playlist targeting
 - Hotkeys:
   - `V` keep
@@ -42,6 +45,7 @@ Core stack:
   - persisted/resumable review sessions
 
 ### Summary / Confirm
+
 - Summary screen shows removed / kept / added groupings
 - Confirm flow applies real Spotify writes for:
   - removing from playlist
@@ -55,6 +59,7 @@ Core stack:
   - post-confirm reconciliation against refreshed Spotify data
 
 ### Audit / History
+
 - Confirm attempts are stored in DB
 - Summary screen now shows recent confirm attempts for the current session
 
@@ -65,6 +70,7 @@ Core stack:
 - Review sessions, review tracks, actions, add targets, and confirm attempts are persisted
 
 Important files:
+
 - [src/lib/db.ts](/c:/Users/ivanz/Documents/Side_Projects/Spotify_Playlist_Manager/src/lib/db.ts:1)
 - [prisma/schema.prisma](/c:/Users/ivanz/Documents/Side_Projects/Spotify_Playlist_Manager/prisma/schema.prisma:1)
 
@@ -81,6 +87,7 @@ DATABASE_URL="postgresql://postgres:VUu%24MjU0E@localhost:5432/spotify_playlist_
 ```
 
 That format is currently working across:
+
 - Next dev server
 - Prisma runtime
 - Prisma CLI / migrations
@@ -109,6 +116,7 @@ That format is currently working across:
 We are intentionally **not** prioritizing deployment right now.
 
 The current goal is to make this app stronger as a resume/personal project by improving:
+
 - product quality
 - UX clarity
 - technical depth
@@ -116,14 +124,17 @@ The current goal is to make this app stronger as a resume/personal project by im
 - documentation
 
 Tracking file:
+
 - [resume-roadmap.md](/c:/Users/ivanz/Documents/Side_Projects/Spotify_Playlist_Manager/resume-roadmap.md:1)
 
 ## New Working Priorities
 
 ### 1. Strengthen The Product Story
+
 Focus on making the product feel more complete and intentional.
 
 Key brainstorm areas already captured:
+
 - stronger progress visibility during review
 - clearer current-track decision / undecided state
 - better add-to-playlist clarity
@@ -131,12 +142,14 @@ Key brainstorm areas already captured:
 - better empty/loading/error UX polish
 
 ### 2. Add Standout Technical Features
+
 - dedicated review/session history page
 - cleanup analytics and insights
 - stronger reconciliation reporting
 - better duplicate-target handling
 
 ### 3. Improve Architecture / Docs / Credibility
+
 - cleaner boundaries
 - better README and diagrams
 - focused tests around confirm/retry/reconciliation
