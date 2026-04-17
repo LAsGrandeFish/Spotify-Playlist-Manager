@@ -86,16 +86,18 @@ export default async function Home() {
 
   if (authState.authenticated) {
     return (
-      <main className="flex min-h-screen flex-col px-6 py-6 font-sans sm:px-8 lg:px-10">
-        <div className="w-full rounded-[36px] border border-black/50 bg-[#050505] p-6 text-white shadow-[0_35px_80px_rgba(0,0,0,0.55)]">
-          <header className="px-4 py-2 flex items-center justify-between rounded-2xl border border-[#101010] bg-[#0f766e]">
+      <main className="flex min-h-screen flex-col px-2 py-2 font-sans sm:px-3 sm:py-3 lg:h-[100dvh] lg:overflow-hidden lg:px-2 lg:py-2">
+        <div className="w-full rounded-[28px] border border-[#121212] bg-[#050505] p-2 text-white shadow-[0_30px_70px_rgba(0,0,0,0.45)] lg:flex lg:h-full lg:min-h-0 lg:flex-col lg:p-2.5">
+          <header className="flex items-center justify-between rounded-[20px] border border-[#101010] bg-[#0f766e] px-4 py-1.5 lg:flex-none">
             <div className="flex items-center gap-[16px]">
-              <span className="flex h-11 w-11 items-center justify-center rounded-2xl bg-emerald-500 text-lg font-semibold text-black">
+              <span className="flex h-10 w-10 items-center justify-center rounded-2xl bg-emerald-500 text-lg font-semibold text-black">
                 ♫
               </span>
               <div>
                 <p className="text-xs uppercase tracking-[0.2em] text-zinc-500">Spotify</p>
-                <p className="text-2xl font-semibold tracking-tight text-white">Library Manager</p>
+                <p className="text-xl font-semibold tracking-tight text-white sm:text-2xl">
+                  Library Manager
+                </p>
               </div>
             </div>
             <div className="flex items-center gap-[16px]">

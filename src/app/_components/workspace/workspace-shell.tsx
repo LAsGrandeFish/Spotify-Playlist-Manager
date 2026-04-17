@@ -393,12 +393,12 @@ export default function WorkspaceShell({
     <div
       className={
         mode === "summary"
-          ? "mt-6 flex w-full justify-center"
-          : "mt-6 grid gap-5 lg:grid-cols-[280px_1fr]"
+          ? "mt-2 flex w-full justify-center lg:min-h-0 lg:flex-1 lg:overflow-y-auto"
+          : "mt-2 grid gap-2 lg:min-h-0 lg:flex-1 lg:grid-cols-[300px_minmax(0,1fr)]"
       }
     >
       {mode !== "summary" && (
-        <div className="self-start lg:sticky lg:top-24 lg:w-[260px]" style={{ maxHeight: "80vh" }}>
+        <div className="self-start lg:h-full lg:min-h-0 lg:w-[300px]">
           <PlaylistRailClient
             data={
               playlistRailData ?? {
@@ -412,7 +412,13 @@ export default function WorkspaceShell({
           />
         </div>
       )}
-      <div className={mode === "summary" ? "w-full max-w-6xl" : "flex flex-col gap-3"}>
+      <div
+        className={
+          mode === "summary"
+            ? "w-full max-w-6xl"
+            : "flex flex-col gap-2 lg:min-h-0 lg:overflow-y-auto"
+        }
+      >
         {mode === "view" ? (
           <PlaylistViewer
             data={loading ? null : queueData}

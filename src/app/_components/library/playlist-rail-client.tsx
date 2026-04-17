@@ -2,8 +2,9 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 
-import type { PlaylistRailData } from "@/lib/spotify/library";
 import clsx from "clsx";
+
+import type { PlaylistRailData } from "@/lib/spotify/library";
 
 type PlaylistRailClientProps = {
   data: PlaylistRailData;
@@ -64,7 +65,7 @@ export default function PlaylistRailClient({
   onSelect,
 }: PlaylistRailClientProps) {
   const isWorkspace = appearance === "workspace";
-  const maxHeightClass = isWorkspace ? "max-h-[75vh]" : "max-h-[24rem]";
+  const listHeightClass = isWorkspace ? "lg:h-full lg:max-h-none max-h-[75vh]" : "max-h-[24rem]";
   const playlistCount = data.playlists.length;
 
   const items = useMemo<ListItem[]>(() => {
@@ -131,55 +132,56 @@ export default function PlaylistRailClient({
   }, [handleKeyDown]);
 
   return (
-    <div className={clsx("flex flex-col gap-4", isWorkspace ? "text-zinc-200" : "text-zinc-700")}>
-      <div className="flex items-center gap-3">
-        <span
-          className={clsx(
-            "flex h-9 w-9 items-center justify-center rounded-2xl text-sm",
-            isWorkspace ? "bg-[#1f1f1f] text-zinc-400" : "bg-zinc-200 text-zinc-600",
-          )}
-        >
-          ☰
-        </span>
-        <div>
-          <p
-            className={clsx(
-              "text-xs uppercase tracking-wide",
-              isWorkspace ? "text-zinc-500" : "text-zinc-500",
-            )}
-          >
-            Your Library
-          </p>
-          <div className="flex items-center gap-2">
-            <p
-              className={clsx(
-                "text-base font-semibold",
-                isWorkspace ? "text-zinc-100" : "text-zinc-800",
-              )}
-            >
-              Playlists
-            </p>
-            <span
-              className={clsx(
-                "rounded-full px-2 py-0.5 text-xs font-medium",
-                isWorkspace ? "bg-[#1a1a1a] text-zinc-400" : "bg-zinc-200 text-zinc-600",
-              )}
-            >
-              {playlistCount}
-            </span>
-          </div>
-        </div>
-      </div>
+    <div
+      className={clsx(
+        "flex flex-col",
+        isWorkspace ? "text-zinc-200 lg:h-full lg:min-h-0" : "text-zinc-700",
+      )}
+    >
       <div
         className={clsx(
-          "relative overflow-hidden rounded-2xl",
-          isWorkspace ? "bg-[#050505]" : "border border-zinc-200 bg-white/70 shadow-sm",
+          "relative overflow-hidden rounded-[22px]",
+          isWorkspace && "lg:min-h-0 lg:flex-1",
+          isWorkspace
+            ? "border border-[#141414] bg-[#121212]"
+            : "border border-zinc-200 bg-white/70 shadow-sm",
         )}
       >
+        <div className="flex items-center gap-3 px-4 pb-3 pt-4">
+          <span
+            className={clsx(
+              "flex h-9 w-9 items-center justify-center rounded-2xl text-sm",
+              isWorkspace ? "bg-[#1f1f1f] text-zinc-400" : "bg-zinc-200 text-zinc-600",
+            )}
+          >
+            ≡
+          </span>
+          <div>
+            <p className="text-xs uppercase tracking-wide text-zinc-500">Your Library</p>
+            <div className="flex items-center gap-2">
+              <p
+                className={clsx(
+                  "text-base font-semibold",
+                  isWorkspace ? "text-zinc-100" : "text-zinc-800",
+                )}
+              >
+                Playlists
+              </p>
+              <span
+                className={clsx(
+                  "rounded-full px-2 py-0.5 text-xs font-medium",
+                  isWorkspace ? "bg-[#1a1a1a] text-zinc-400" : "bg-zinc-200 text-zinc-600",
+                )}
+              >
+                {playlistCount}
+              </span>
+            </div>
+          </div>
+        </div>
         <ul
           className={clsx(
-            "custom-scrollbar overflow-y-auto pr-1",
-            maxHeightClass,
+            "custom-scrollbar overflow-y-auto px-1 pb-1 pr-1",
+            listHeightClass,
             isWorkspace ? "divide-y divide-[#151515]" : "divide-y divide-zinc-100",
           )}
         >
@@ -243,11 +245,7 @@ export default function PlaylistRailClient({
                   >
                     {item.name}
                   </span>
-                  <span
-                    className={clsx("text-xs", isWorkspace ? "text-zinc-500" : "text-zinc-500")}
-                  >
-                    {item.subtitle}
-                  </span>
+                  <span className="text-xs text-zinc-500">{item.subtitle}</span>
                 </span>
               </button>
             );

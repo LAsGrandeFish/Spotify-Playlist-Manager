@@ -98,8 +98,8 @@ export default function PlaylistViewer({
   }, [total, tracks.length]);
 
   return (
-    <div className="rounded-[28px] border border-black/50 bg-gradient-to-b from-[#1c1c1c] via-[#0f0f0f] to-[#070707] text-white shadow-[0_25px_80px_rgba(0,0,0,0.45)]">
-      <div className="flex flex-col gap-4 px-6 pb-6 pt-6 sm:flex-row sm:items-center sm:gap-6 sm:px-8 sm:pt-8">
+    <div className="rounded-[24px] border border-[#141414] bg-gradient-to-b from-[#1c1c1c] via-[#101010] to-[#0a0a0a] text-white shadow-[0_25px_80px_rgba(0,0,0,0.35)] lg:flex lg:h-full lg:min-h-0 lg:flex-col">
+      <div className="flex flex-col gap-4 px-5 pb-5 pt-5 sm:flex-row sm:items-center sm:gap-6 sm:px-6 sm:pt-6 lg:flex-none">
         <div className="relative h-28 w-28 overflow-hidden rounded-2xl bg-gradient-to-br from-emerald-500 to-teal-400 shadow-lg">
           {meta.artworkUrl ? (
             <Image
@@ -138,19 +138,22 @@ export default function PlaylistViewer({
       </div>
 
       {notice ? (
-        <div className="mx-6 mb-4 rounded-2xl border border-sky-500/30 bg-sky-500/10 px-4 py-3 text-sm text-sky-200 sm:mx-8">
+        <div className="mx-5 mb-4 rounded-2xl border border-sky-500/30 bg-sky-500/10 px-4 py-3 text-sm text-sky-200 sm:mx-6 lg:flex-none">
           {notice}
         </div>
       ) : null}
 
-      <div className="overflow-hidden rounded-[28px] border-t border-white/5 bg-black/40">
+      <div className="overflow-hidden rounded-[24px] border-t border-white/5 bg-black/40 lg:flex lg:min-h-0 lg:flex-1 lg:flex-col">
         <div className="grid grid-cols-[40px_minmax(0,1fr)_minmax(0,1fr)_80px] items-center gap-4 px-3 py-2 text-[11px] uppercase tracking-wide text-zinc-500">
           <span className="text-center">#</span>
           <span>Title</span>
           <span>Album</span>
           <span className="text-right">Duration</span>
         </div>
-        <ul role="rowgroup" className="divide-y divide-zinc-800/60">
+        <ul
+          role="rowgroup"
+          className="divide-y divide-zinc-800/60 lg:min-h-0 lg:flex-1 lg:overflow-y-auto"
+        >
           {loading ? (
             <li className="px-3 py-6 text-center text-sm text-zinc-400">Loading tracks…</li>
           ) : error ? (
