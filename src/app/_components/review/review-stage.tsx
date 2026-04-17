@@ -23,8 +23,8 @@ type SpotifyPlayerState = {
 type SpotifyPlayer = {
   connect: () => Promise<boolean>;
   disconnect: () => void;
-  addListener: (event: string, cb: (payload: unknown) => void) => void;
-  removeListener: (event: string, cb?: (payload: unknown) => void) => void;
+  addListener: <TPayload = unknown>(event: string, cb: (payload: TPayload) => void) => void;
+  removeListener: <TPayload = unknown>(event: string, cb?: (payload: TPayload) => void) => void;
   togglePlay: () => Promise<void>;
   pause: () => Promise<void>;
 };
@@ -1117,13 +1117,18 @@ export default function ReviewStage({
   const renderRibbon = () => (
     <div className="mx-auto w-full max-w-5xl rounded-[20px] bg-[#0d0d0d] p-4 text-white shadow-[0_20px_60px_rgba(0,0,0,0.35)]">
       <div className="flex items-center gap-3">
-        <button
-          type="button"
-          onClick={() => setRibbonOffset(offset => Math.max(0, offset - 1))}
-          className="flex h-10 w-10 items-center justify-center rounded-full border border-zinc-700 text-sm text-zinc-300 transition hover:border-emerald-500 hover:text-emerald-200"
-        >
-          &lt;
-        </button>
+        <div className="flex min-w-[52px] flex-col items-center gap-2">
+          <button
+            type="button"
+            onClick={() => setRibbonOffset(offset => Math.max(0, offset - 1))}
+            className="flex h-10 w-10 items-center justify-center rounded-full border border-zinc-700 text-sm text-zinc-300 transition hover:border-emerald-500 hover:text-emerald-200"
+          >
+            &lt;
+          </button>
+          <span className="flex items-center justify-center rounded-lg border border-zinc-700 px-2 py-1 text-[11px] uppercase tracking-wide text-zinc-200">
+            A
+          </span>
+        </div>
         <div className="flex flex-1 items-stretch gap-3 overflow-hidden">
           {visiblePlaylists.map((p, idx) => {
             const hotkey = RIBBON_KEYS[idx];
@@ -1163,22 +1168,22 @@ export default function ReviewStage({
             );
           })}
         </div>
-        <button
-          type="button"
-          onClick={() =>
-            setRibbonOffset(offset =>
-              Math.min(Math.max(0, allPlaylists.length - RIBBON_KEYS.length), offset + 1),
-            )
-          }
-          className="flex h-10 w-10 items-center justify-center rounded-full border border-zinc-700 text-sm text-zinc-300 transition hover:border-emerald-500 hover:text-emerald-200"
-        >
-          &gt;
-        </button>
-      </div>
-      <div className="mt-3 grid grid-cols-3 items-center text-[11px] uppercase tracking-[0.2em] text-zinc-500">
-        <span className="text-left">A / ; to scroll</span>
-        <span className="text-center" />
-        <span className="text-right">I to {isAddMode ? "Confirm" : "Add to Playlist"}</span>
+        <div className="flex min-w-[52px] flex-col items-center gap-2">
+          <button
+            type="button"
+            onClick={() =>
+              setRibbonOffset(offset =>
+                Math.min(Math.max(0, allPlaylists.length - RIBBON_KEYS.length), offset + 1),
+              )
+            }
+            className="flex h-10 w-10 items-center justify-center rounded-full border border-zinc-700 text-sm text-zinc-300 transition hover:border-emerald-500 hover:text-emerald-200"
+          >
+            &gt;
+          </button>
+          <span className="flex items-center justify-center rounded-lg border border-zinc-700 px-2 py-1 text-[11px] uppercase tracking-wide text-zinc-200">
+            ;
+          </span>
+        </div>
       </div>
     </div>
   );

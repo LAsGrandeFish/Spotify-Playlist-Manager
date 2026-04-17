@@ -98,8 +98,11 @@ export default function WorkspaceShell({
     total: initialQueueData?.total ?? playlistRailData?.likedSongs?.total ?? 0,
     artworkUrl:
       initialQueueData?.source.type === "playlist"
-        ? (playlistRailData?.playlists.find(p => p.id === initialQueueData.source.id)?.images?.[0]
-            ?.url ?? null)
+        ? (playlistRailData?.playlists.find(
+            p =>
+              p.id ===
+              (initialQueueData.source.type === "playlist" ? initialQueueData.source.id : ""),
+          )?.images?.[0]?.url ?? null)
         : (playlistRailData?.likedSongs?.artwork?.url ?? null),
   }));
 
