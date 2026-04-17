@@ -1,0 +1,60 @@
+Project: Spotify Playlist Manager
+
+Project Type:
+Full-stack playlist review and cleanup web application
+
+Project Summary:
+Designed and built a keyboard-centric Spotify playlist management application that helps users review large playlists, decide which tracks to keep or remove, add tracks to other playlists, and confirm batch changes in one workflow. The app combines a multi-stage review experience with persistent review sessions, resumable state, Spotify playback integration, and a Prisma-backed data layer to make large-library cleanup faster and more deliberate.
+
+Tech Stack:
+- Next.js 16 (App Router)
+- React 19
+- TypeScript
+- Tailwind CSS
+- Prisma ORM
+- PostgreSQL
+- Spotify Web API
+- Spotify Web Playback SDK
+- react-range
+- ESLint
+- Prettier
+
+Core Features:
+- Keyboard-driven review workflow for playlist cleanup
+- Playlist viewer with metadata table, playlist hero, and incremental track loading
+- Review mode for keep, remove, undo, add-to-playlist, and new-playlist actions
+- Batch confirm flow that applies Spotify mutations in chunks
+- Persistent review sessions that allow in-progress work to be resumed
+- Playback support inside review mode using Spotify playback integration
+- Summary screen with review results, confirm status, retry support, and confirm-attempt audit history
+- Post-confirm reconciliation to compare expected changes against refreshed Spotify data
+
+Implementation Details:
+- Structured the product around three primary states: viewer mode, review mode, and summary/confirm mode
+- Implemented a session-backed review model in Prisma to store review sessions, reviewed tracks, actions, add targets, and confirm attempts
+- Built a resilient confirm pipeline that supports partial failure handling, retrying only failed chunks, and post-confirm reconciliation
+- Added Spotify OAuth-based authentication and token refresh handling to reduce stale-session failures during longer review sessions
+- Integrated Spotify playback into the review interface and paired it with custom playback controls and a progress slider
+- Used typed request/response flows across client and server routes to keep review state, persistence, and Spotify writes coordinated
+
+Why It Matters:
+This project demonstrates full-stack product development, third-party API integration, persistent workflow design, failure-aware batch mutation handling, and the ability to build a polished user-facing tool around a real usability problem.
+
+Resume Entry - Short Version:
+Built a full-stack Spotify playlist review application with Next.js, TypeScript, Prisma, PostgreSQL, and Spotify APIs that lets users batch-review tracks, resume in-progress sessions, and apply playlist changes through a keyboard-driven workflow.
+
+Resume Bullet Options:
+- Developed a full-stack Spotify playlist management app using Next.js, TypeScript, Prisma, PostgreSQL, and Spotify APIs to support keyboard-centric batch review and cleanup workflows.
+- Implemented persistent review sessions, resumable state, and an audit-backed confirm pipeline with retry and reconciliation support for Spotify playlist mutations.
+- Built a multi-stage product flow with playlist viewing, interactive track review, playback integration, and summary reporting to make large playlist curation faster and more intentional.
+
+Interview Talking Points:
+- Why a session-backed review workflow was a better fit than immediate per-track mutations
+- How the confirm pipeline was designed to handle partial failures and retries safely
+- How Prisma and PostgreSQL were used to persist review state and confirm-attempt history
+- Tradeoffs involved in integrating Spotify playback and token refresh into a long-lived review UI
+- How the product was designed around keyboard efficiency for users with very large libraries
+
+Notes:
+- This summary reflects the current Spotify Playlist Manager workspace.
+- The project currently prioritizes strong product polish and technical depth as a personal/resume project rather than immediate deployment.
