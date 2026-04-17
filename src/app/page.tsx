@@ -88,29 +88,24 @@ export default async function Home() {
     return (
       <main className="flex min-h-screen flex-col px-2 py-2 font-sans sm:px-3 sm:py-3 lg:h-[100dvh] lg:overflow-hidden lg:px-2 lg:py-2">
         <div className="w-full rounded-[28px] border border-[#121212] bg-[#050505] p-2 text-white shadow-[0_30px_70px_rgba(0,0,0,0.45)] lg:flex lg:h-full lg:min-h-0 lg:flex-col lg:p-2.5">
-          <header className="flex items-center justify-between rounded-[20px] border border-[#101010] bg-[#0f766e] px-4 py-1.5 lg:flex-none">
+          <header className="flex items-center justify-between rounded-[20px] border border-[#1f1f1f] bg-gradient-to-r from-[#151515] via-[#1a1a1a] to-[#121212] px-4 py-1.5 lg:flex-none">
             <div className="flex items-center gap-[16px]">
               <span className="flex h-10 w-10 items-center justify-center rounded-2xl bg-emerald-500 text-lg font-semibold text-black">
                 ♫
               </span>
               <div>
-                <p className="text-xs uppercase tracking-[0.2em] text-zinc-500">Spotify</p>
-                <p className="text-xl font-semibold tracking-tight text-white sm:text-2xl">
+                <p className="text-xs uppercase tracking-[0.24em] text-emerald-300/85">Spotify</p>
+                <p className="text-xl font-semibold tracking-tight text-zinc-50 sm:text-2xl">
                   Library Manager
                 </p>
               </div>
             </div>
             <div className="flex items-center gap-[16px]">
               <div className="text-right">
-                <p className="text-sm font-semibold text-white">{displayName}</p>
-                {authState.profile?.email ? (
-                  <p className="text-xs text-zinc-500">{authState.profile.email}</p>
-                ) : (
-                  <p className="text-xs text-zinc-500">Online</p>
-                )}
+                <p className="text-sm font-semibold text-zinc-100">{displayName}</p>
               </div>
               {primaryAvatar ? (
-                <span className="relative h-10 w-10 overflow-hidden rounded-full border border-emerald-500/40">
+                <span className="relative h-10 w-10 overflow-hidden rounded-full border border-emerald-500/35 shadow-[0_0_0_1px_rgba(34,197,94,0.08)]">
                   <Image
                     src={primaryAvatar}
                     alt={`${displayName} avatar`}
@@ -119,13 +114,13 @@ export default async function Home() {
                   />
                 </span>
               ) : (
-                <span className="flex h-10 w-10 items-center justify-center rounded-full border border-emerald-500/60 bg-emerald-600/30 text-sm font-semibold text-emerald-200">
+                <span className="flex h-10 w-10 items-center justify-center rounded-full border border-emerald-500/55 bg-emerald-500/18 text-sm font-semibold text-emerald-200">
                   {userInitial}
                 </span>
               )}
               <a
                 href="/api/auth/logout"
-                className="rounded-full border border-zinc-700 px-4 py-1.5 text-xs font-semibold uppercase tracking-wide text-zinc-300 transition hover:border-emerald-500 hover:text-white"
+                className="rounded-full border border-zinc-700 bg-[#101010] px-4 py-1.5 text-xs font-semibold uppercase tracking-wide text-zinc-200 transition hover:border-emerald-500 hover:bg-[#151515] hover:text-white"
               >
                 Log out
               </a>
