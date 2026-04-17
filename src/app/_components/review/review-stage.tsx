@@ -1115,13 +1115,13 @@ export default function ReviewStage({
   ]);
 
   const renderRibbon = () => (
-    <div className="mx-auto w-full max-w-5xl rounded-[20px] bg-[#0d0d0d] p-4 text-white shadow-[0_20px_60px_rgba(0,0,0,0.35)]">
-      <div className="flex items-center gap-3">
-        <div className="flex min-w-[52px] flex-col items-center gap-2">
+    <div className="w-full rounded-[20px] border border-[#141414] bg-[#121212] p-3 text-white shadow-[0_20px_60px_rgba(0,0,0,0.35)]">
+      <div className="flex items-center gap-2.5">
+        <div className="flex min-w-[48px] flex-col items-center gap-1.5">
           <button
             type="button"
             onClick={() => setRibbonOffset(offset => Math.max(0, offset - 1))}
-            className="flex h-10 w-10 items-center justify-center rounded-full border border-zinc-700 text-sm text-zinc-300 transition hover:border-emerald-500 hover:text-emerald-200"
+            className="flex h-9 w-9 items-center justify-center rounded-full border border-zinc-700 text-sm text-zinc-300 transition hover:border-emerald-500 hover:text-emerald-200"
           >
             &lt;
           </button>
@@ -1129,7 +1129,7 @@ export default function ReviewStage({
             A
           </span>
         </div>
-        <div className="flex flex-1 items-stretch gap-3 overflow-hidden">
+        <div className="flex flex-1 items-stretch gap-2.5 overflow-hidden">
           {visiblePlaylists.map((p, idx) => {
             const hotkey = RIBBON_KEYS[idx];
             const selected = selectedPlaylists.has(p.id);
@@ -1139,11 +1139,13 @@ export default function ReviewStage({
                 type="button"
                 onClick={() => togglePlaylistSelection(p.id)}
                 className={clsx(
-                  "group relative flex min-w-[96px] max-w-[120px] flex-1 flex-col items-center justify-center gap-2 rounded-xl border border-transparent bg-black/40 px-3 py-3 text-xs transition hover:border-emerald-500/60 hover:bg-white/5",
-                  selected && "border-emerald-500 ring-2 ring-emerald-400/60",
+                  "group relative flex min-w-[88px] max-w-[112px] flex-1 flex-col items-center justify-center gap-1.5 rounded-xl border px-2.5 py-2.5 text-xs transition",
+                  selected
+                    ? "border-emerald-500 bg-[#1a1a1a] ring-2 ring-emerald-400/60"
+                    : "border-[#202020] bg-gradient-to-b from-[#1b1b1b] to-[#151515] hover:border-emerald-500/40 hover:bg-[#1a1a1a]",
                 )}
               >
-                <span className="relative block h-14 w-14 overflow-hidden rounded-2xl bg-gradient-to-br from-zinc-700 to-zinc-900">
+                <span className="relative block h-12 w-12 overflow-hidden rounded-2xl border border-[#262626] bg-gradient-to-br from-zinc-700 to-zinc-900">
                   {p.artworkUrl ? (
                     // eslint-disable-next-line @next/next/no-img-element
                     <img
@@ -1158,17 +1160,17 @@ export default function ReviewStage({
                     />
                   )}
                 </span>
-                <span className="line-clamp-1 w-full text-center text-sm font-medium text-zinc-100">
+                <span className="line-clamp-1 w-full text-center text-[15px] font-medium text-zinc-100">
                   {p.name}
                 </span>
-                <span className="mt-1 flex items-center justify-center rounded-lg border border-zinc-700 px-2 py-1 text-[11px] uppercase tracking-wide text-zinc-200">
+                <span className="flex items-center justify-center rounded-lg border border-zinc-700 px-2 py-1 text-[11px] uppercase tracking-wide text-zinc-200">
                   {hotkey}
                 </span>
               </button>
             );
           })}
         </div>
-        <div className="flex min-w-[52px] flex-col items-center gap-2">
+        <div className="flex min-w-[48px] flex-col items-center gap-1.5">
           <button
             type="button"
             onClick={() =>
@@ -1176,7 +1178,7 @@ export default function ReviewStage({
                 Math.min(Math.max(0, allPlaylists.length - RIBBON_KEYS.length), offset + 1),
               )
             }
-            className="flex h-10 w-10 items-center justify-center rounded-full border border-zinc-700 text-sm text-zinc-300 transition hover:border-emerald-500 hover:text-emerald-200"
+            className="flex h-9 w-9 items-center justify-center rounded-full border border-zinc-700 text-sm text-zinc-300 transition hover:border-emerald-500 hover:text-emerald-200"
           >
             &gt;
           </button>
@@ -1189,14 +1191,14 @@ export default function ReviewStage({
   );
 
   const renderTrackCard = () => (
-    <div className="mx-auto flex w-full max-w-[320px] flex-col items-center gap-2 rounded-[24px] border border-zinc-800 bg-[#0d0d0d] px-5 py-5 text-white shadow-[0_20px_60px_rgba(0,0,0,0.35)]">
+    <div className="mx-auto flex w-full max-w-[288px] self-start flex-col items-center gap-1.5 rounded-[24px] border border-[#141414] bg-[#121212] px-3.5 py-3.5 text-white shadow-[0_20px_60px_rgba(0,0,0,0.35)]">
       {loading ? (
-        <div className="h-[280px] w-full rounded-2xl bg-gradient-to-br from-zinc-800 to-zinc-900" />
+        <div className="aspect-square w-full rounded-2xl bg-gradient-to-br from-zinc-800 to-zinc-900" />
       ) : error ? (
         <p className="text-sm text-amber-400">{error}</p>
       ) : currentTrack ? (
         <>
-          <div className="flex w-full items-center justify-between text-xs text-zinc-400">
+          <div className="flex w-full items-center justify-between text-[11px] text-zinc-400">
             <span>
               {queueData?.source.type === "playlist" ? queueData.source.name : "Liked Songs"}
             </span>
@@ -1204,13 +1206,13 @@ export default function ReviewStage({
               {activeIndex + 1}/{totalTracks}
             </span>
           </div>
-          <div className="relative h-72 w-full overflow-hidden rounded-2xl bg-gradient-to-br from-[#5b4de1] to-[#d32c8d]">
+          <div className="relative aspect-square w-full overflow-hidden rounded-2xl bg-[#0f0f0f]">
             {currentTrack.artworkUrl ? (
               // eslint-disable-next-line @next/next/no-img-element
               <img
                 src={currentTrack.artworkUrl}
                 alt=""
-                className="h-full w-full object-cover"
+                className="h-full w-full object-contain"
                 loading="lazy"
               />
             ) : (
@@ -1218,7 +1220,7 @@ export default function ReviewStage({
             )}
           </div>
           <div className="w-full space-y-1">
-            <p className="truncate text-lg font-semibold">{currentTrack.title}</p>
+            <p className="truncate text-base font-semibold">{currentTrack.title}</p>
             <p className="truncate text-sm text-zinc-400">{currentTrack.artists}</p>
           </div>
           <div className="flex w-full items-center gap-2">
@@ -1278,7 +1280,7 @@ export default function ReviewStage({
                 : "-0:00"}
             </span>
           </div>
-          <div className="flex w-full items-center justify-center gap-4 text-xs text-zinc-200">
+          <div className="flex w-full items-center justify-center gap-3 text-xs text-zinc-200">
             <button
               type="button"
               onClick={togglePlayback}
@@ -1310,13 +1312,13 @@ export default function ReviewStage({
   );
 
   const renderActions = () => (
-    <div className="min-w-[260px] rounded-[16px] border border-zinc-800 bg-[#0d0d0d] p-4 text-sm text-white shadow-[0_20px_60px_rgba(0,0,0,0.35)]">
+    <div className="w-full rounded-[16px] border border-[#141414] bg-[#121212] p-3.5 text-sm text-white shadow-[0_20px_60px_rgba(0,0,0,0.35)] lg:max-w-[272px]">
       <div className="space-y-2">
         <p className="text-xs uppercase tracking-[0.2em] text-zinc-500">Track History</p>
         <div className="h-px bg-zinc-800" />
         <div className="min-h-[40px] text-xs text-zinc-400">{lastActionLabel}</div>
       </div>
-      <div className="mt-4 space-y-2">
+      <div className="mt-3.5 space-y-2">
         <p className="text-xs uppercase tracking-[0.2em] text-zinc-500">Track Actions</p>
         <div className="h-px bg-zinc-800" />
         <div className="flex flex-wrap gap-2 text-xs">
@@ -1343,7 +1345,7 @@ export default function ReviewStage({
           </button>
         </div>
       </div>
-      <div className="mt-4 space-y-2">
+      <div className="mt-3.5 space-y-2">
         <p className="text-xs uppercase tracking-[0.2em] text-zinc-500">Playlist Actions</p>
         <div className="h-px bg-zinc-800" />
         <div className="flex flex-wrap gap-2 text-xs">
@@ -1368,7 +1370,7 @@ export default function ReviewStage({
         </div>
       </div>
       {onLoadMore && queueData?.nextOffset != null && (
-        <div className="mt-4 flex justify-center">
+        <div className="mt-3.5 flex justify-center">
           <button
             type="button"
             onClick={onLoadMore}
@@ -1383,13 +1385,13 @@ export default function ReviewStage({
   );
 
   return (
-    <div className="flex flex-col gap-6">
+    <div className="flex flex-col gap-3 lg:h-full lg:min-h-0 lg:overflow-hidden">
       {renderRibbon()}
-      <div className="grid gap-6 lg:grid-cols-[1fr_280px]">
+      <div className="grid items-start gap-3 lg:min-h-0 lg:flex-1 lg:grid-cols-[1fr_272px]">
         {renderTrackCard()}
         {renderActions()}
       </div>
-      <div className="flex justify-end">
+      <div className="flex justify-end lg:flex-none">
         <button
           type="button"
           onClick={() => {
