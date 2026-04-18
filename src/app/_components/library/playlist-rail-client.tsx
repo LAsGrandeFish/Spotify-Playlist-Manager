@@ -65,7 +65,7 @@ export default function PlaylistRailClient({
   onSelect,
 }: PlaylistRailClientProps) {
   const isWorkspace = appearance === "workspace";
-  const listHeightClass = isWorkspace ? "lg:h-full lg:max-h-none max-h-[75vh]" : "max-h-[24rem]";
+  const listHeightClass = isWorkspace ? "lg:flex-1 lg:min-h-0 max-h-[75vh]" : "max-h-[24rem]";
   const playlistCount = data.playlists.length;
 
   const items = useMemo<ListItem[]>(() => {
@@ -141,7 +141,7 @@ export default function PlaylistRailClient({
       <div
         className={clsx(
           "relative overflow-hidden rounded-[22px]",
-          isWorkspace && "lg:min-h-0 lg:flex-1",
+          isWorkspace && "lg:flex lg:min-h-0 lg:flex-1 lg:flex-col",
           isWorkspace
             ? "border border-[#141414] bg-[#121212]"
             : "border border-zinc-200 bg-white/70 shadow-sm",
@@ -180,7 +180,7 @@ export default function PlaylistRailClient({
         </div>
         <ul
           className={clsx(
-            "custom-scrollbar overflow-y-auto px-1 pb-1 pr-1",
+            "custom-scrollbar overflow-y-auto px-1 pb-4 pr-1",
             listHeightClass,
             isWorkspace ? "divide-y divide-[#151515]" : "divide-y divide-zinc-100",
           )}
