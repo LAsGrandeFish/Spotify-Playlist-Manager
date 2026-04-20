@@ -1129,9 +1129,9 @@ export default function ReviewStage({
   ]);
 
   const renderRibbon = () => (
-    <div className="w-full rounded-[20px] border border-[#141414] bg-[#121212] p-3 text-white shadow-[0_20px_60px_rgba(0,0,0,0.35)]">
-      <div className="flex items-center gap-2.5">
-        <div className="flex min-w-[48px] flex-col items-center gap-1.5">
+    <div className="w-full rounded-[20px] border border-[#141414] bg-[#121212] p-4 text-white shadow-[0_20px_60px_rgba(0,0,0,0.35)]">
+      <div className="flex items-stretch gap-3">
+        <div className="flex min-w-[52px] flex-col items-center justify-center gap-2">
           <button
             type="button"
             onClick={() => setRibbonOffset(offset => Math.max(0, offset - 1))}
@@ -1143,7 +1143,7 @@ export default function ReviewStage({
             A
           </span>
         </div>
-        <div className="flex flex-1 items-stretch gap-2.5 overflow-hidden">
+        <div className="flex flex-1 items-stretch gap-3 overflow-hidden">
           {visiblePlaylists.map((p, idx) => {
             const hotkey = RIBBON_KEYS[idx];
             const selected = selectedPlaylists.has(p.id);
@@ -1153,13 +1153,13 @@ export default function ReviewStage({
                 type="button"
                 onClick={() => togglePlaylistSelection(p.id)}
                 className={clsx(
-                  "group relative flex min-w-[88px] max-w-[112px] flex-1 flex-col items-center justify-center gap-1.5 rounded-xl border px-2.5 py-2.5 text-xs transition",
+                  "group relative flex min-h-[156px] min-w-[92px] max-w-[132px] flex-1 flex-col items-center justify-center gap-1.5 rounded-xl border px-3 py-2.5 text-xs transition",
                   selected
                     ? "border-emerald-500 bg-[#1a1a1a] ring-2 ring-emerald-400/60"
                     : "border-[#202020] bg-gradient-to-b from-[#1b1b1b] to-[#151515] hover:border-emerald-500/40 hover:bg-[#1a1a1a]",
                 )}
               >
-                <span className="relative block h-12 w-12 overflow-hidden rounded-2xl border border-[#262626] bg-gradient-to-br from-zinc-700 to-zinc-900">
+                <span className="relative block h-14 w-14 overflow-hidden rounded-2xl border border-[#262626] bg-gradient-to-br from-zinc-700 to-zinc-900">
                   {p.artworkUrl ? (
                     // eslint-disable-next-line @next/next/no-img-element
                     <img
@@ -1174,8 +1174,8 @@ export default function ReviewStage({
                     />
                   )}
                 </span>
-                <span className="line-clamp-1 w-full text-center text-[15px] font-medium text-zinc-100">
-                  {p.name}
+                <span className="flex min-h-[2rem] w-full items-center justify-center px-1 text-center text-[15px] font-medium leading-normal text-zinc-100">
+                  <span className="block w-full truncate">{p.name}</span>
                 </span>
                 <span className="flex items-center justify-center rounded-lg border border-zinc-700 px-2 py-1 text-[11px] uppercase tracking-wide text-zinc-200">
                   {hotkey}
@@ -1184,7 +1184,7 @@ export default function ReviewStage({
             );
           })}
         </div>
-        <div className="flex min-w-[48px] flex-col items-center gap-1.5">
+        <div className="flex min-w-[52px] flex-col items-center justify-center gap-2">
           <button
             type="button"
             onClick={() =>
