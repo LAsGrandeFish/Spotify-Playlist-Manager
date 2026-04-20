@@ -66,6 +66,9 @@ export default function WorkspaceShell({
   spotifyUser,
 }: WorkspaceShellProps) {
   const router = useRouter();
+  const [playlistRailState, setPlaylistRailState] = useState<PlaylistRailData | null>(
+    playlistRailData,
+  );
   const [queueData, setQueueData] = useState<QueueData | null>(initialQueueData);
   const [queueError, setQueueError] = useState<string | null>(initialQueueError);
   const [queueNotice, setQueueNotice] = useState<string | null>(null);
@@ -86,6 +89,7 @@ export default function WorkspaceShell({
   const [confirmFailures, setConfirmFailures] = useState<ConfirmApiPayload["failures"]>([]);
   const [confirmAttempts, setConfirmAttempts] = useState<ConfirmAttemptHistoryItem[]>([]);
   const [confirmAttemptsLoading, setConfirmAttemptsLoading] = useState(false);
+  const [deletingPlaylistId, setDeletingPlaylistId] = useState<string | null>(null);
   const [selectedMeta, setSelectedMeta] = useState<{
     title: string;
     total: number;
@@ -95,16 +99,20 @@ export default function WorkspaceShell({
       initialQueueData?.source.type === "playlist"
         ? (initialQueueData.source.name ?? "Playlist")
         : "Liked Songs",
-    total: initialQueueData?.total ?? playlistRailData?.likedSongs?.total ?? 0,
+    total: initialQueueData?.total ?? playlistRailState?.likedSongs?.total ?? 0,
     artworkUrl:
       initialQueueData?.source.type === "playlist"
-        ? (playlistRailData?.playlists.find(
+        ? (playlistRailState?.playlists.find(
             p =>
               p.id ===
               (initialQueueData.source.type === "playlist" ? initialQueueData.source.id : ""),
           )?.images?.[0]?.url ?? null)
-        : (playlistRailData?.likedSongs?.artwork?.url ?? null),
+        : (playlistRailState?.likedSongs?.artwork?.url ?? null),
   }));
+
+  useEffect(() => {
+    setPlaylistRailState(playlistRailData);
+  }, [playlistRailData]);
 
   const activeId = useMemo(() => {
     if (queueData?.source.type === "playlist") return queueData.source.id;
@@ -210,7 +218,7 @@ export default function WorkspaceShell({
 
   const handleSelect = useCallback(
     async (item: { id: string; name: string; type: "liked" | "playlist" }) => {
-      if (!playlistRailData) return;
+      if (!playlistRailState) return;
 
       const nextSource: QueueSource =
         item.type === "liked"
@@ -230,11 +238,11 @@ export default function WorkspaceShell({
         item.type === "liked"
           ? {
               title: "Liked Songs",
-              total: playlistRailData?.likedSongs?.total ?? 0,
-              artworkUrl: playlistRailData?.likedSongs?.artwork?.url ?? null,
+              total: playlistRailState?.likedSongs?.total ?? 0,
+              artworkUrl: playlistRailState?.likedSongs?.artwork?.url ?? null,
             }
           : (() => {
-              const found = playlistRailData?.playlists.find(p => p.id === item.id);
+              const found = playlistRailState?.playlists.find(p => p.id === item.id);
               return {
                 title: item.name,
                 total: found?.totalTracks ?? 0,
@@ -256,7 +264,7 @@ export default function WorkspaceShell({
         setLoading(false);
       }
     },
-    [fetchSourceQueue, playlistRailData],
+    [fetchSourceQueue, playlistRailState],
   );
 
   const handleLoadMore = useCallback(async () => {
@@ -289,6 +297,68 @@ export default function WorkspaceShell({
       setLoadingMore(false);
     }
   }, [fetchSourceQueue, queueData, loadingMore]);
+
+  const handleDeletePlaylist = useCallback(
+    async (item: {
+      type: "playlist";
+      id: string;
+      name: string;
+      subtitle: string;
+      artworkUrl: string | null;
+      meta: {
+        totalTracks: number;
+        ownerId: string;
+        ownerName?: string | null;
+        isCollaborative: boolean;
+      };
+    }) => {
+      if (item.meta.ownerId !== spotifyUser?.spotifyId) return;
+
+      const confirmed = window.confirm(
+        `Remove "${item.name}" from your Spotify playlists? This will not remove tracks from your library or other playlists.`,
+      );
+      if (!confirmed) return;
+
+      setDeletingPlaylistId(item.id);
+      setQueueError(null);
+
+      try {
+        const response = await fetch(`/api/playlists/${item.id}`, {
+          method: "DELETE",
+        });
+        const body = await response.json().catch(() => ({}));
+
+        if (!response.ok) {
+          if (response.status === 401) {
+            redirectToLogin();
+            return;
+          }
+          throw new Error(body?.error || "Failed to delete playlist.");
+        }
+
+        setPlaylistRailState(prev =>
+          prev
+            ? {
+                ...prev,
+                playlists: prev.playlists.filter(playlist => playlist.id !== item.id),
+              }
+            : prev,
+        );
+
+        if (queueData?.source.type === "playlist" && queueData.source.id === item.id) {
+          await handleSelect({ id: "liked-songs", name: "Liked Songs", type: "liked" });
+        }
+
+        setQueueNotice(`Removed "${item.name}" from your Spotify playlists.`);
+      } catch (error) {
+        console.error("Failed to delete playlist:", error);
+        setQueueError(error instanceof Error ? error.message : "Failed to delete playlist.");
+      } finally {
+        setDeletingPlaylistId(null);
+      }
+    },
+    [handleSelect, queueData?.source, redirectToLogin, spotifyUser?.spotifyId],
+  );
 
   const submitConfirm = useCallback(
     async (retryFailures?: ConfirmApiPayload["failures"]) => {
@@ -404,14 +474,17 @@ export default function WorkspaceShell({
         <div className="self-start lg:h-full lg:min-h-0 lg:w-[300px]">
           <PlaylistRailClient
             data={
-              playlistRailData ?? {
+              playlistRailState ?? {
                 likedSongs: { total: 0, artwork: null },
                 playlists: [],
               }
             }
             appearance="workspace"
             activeId={activeId}
+            currentSpotifyUserId={spotifyUser?.spotifyId ?? null}
+            deletingPlaylistId={deletingPlaylistId}
             onSelect={item => handleSelect({ ...item, name: item.name })}
+            onDeletePlaylist={handleDeletePlaylist}
           />
         </div>
       )}
@@ -436,7 +509,7 @@ export default function WorkspaceShell({
         ) : mode === "review" ? (
           <ReviewStage
             key={reviewSessionKey}
-            playlistRailData={playlistRailData}
+            playlistRailData={playlistRailState}
             queueData={loading ? null : queueData}
             loading={loading}
             error={queueError}

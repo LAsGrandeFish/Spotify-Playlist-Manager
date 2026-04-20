@@ -10,6 +10,7 @@ export type PlaylistSummary = {
   name: string;
   totalTracks: number;
   images: SpotifyImage[];
+  ownerId: string;
   ownerName?: string | null;
   isCollaborative: boolean;
   isPublic: boolean;
@@ -30,6 +31,7 @@ const mapPlaylistToSummary = (playlist: SpotifyPlaylist): PlaylistSummary => ({
   name: playlist.name,
   totalTracks: playlist.tracks.total,
   images: playlist.images,
+  ownerId: playlist.owner.id,
   ownerName: playlist.owner.display_name,
   isCollaborative: playlist.collaborative,
   isPublic: playlist.public,
