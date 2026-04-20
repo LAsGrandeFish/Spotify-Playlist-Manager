@@ -89,11 +89,14 @@ export default function WorkspaceShell({
   const [confirmFailures, setConfirmFailures] = useState<ConfirmApiPayload["failures"]>([]);
   const [confirmAttempts, setConfirmAttempts] = useState<ConfirmAttemptHistoryItem[]>([]);
   const [confirmAttemptsLoading, setConfirmAttemptsLoading] = useState(false);
+  const [renamingPlaylistId, setRenamingPlaylistId] = useState<string | null>(null);
   const [deletingPlaylistId, setDeletingPlaylistId] = useState<string | null>(null);
   const [selectedMeta, setSelectedMeta] = useState<{
     title: string;
     total: number;
     artworkUrl: string | null;
+    sourceType: "liked" | "playlist";
+    canManage: boolean;
   }>(() => ({
     title:
       initialQueueData?.source.type === "playlist"
@@ -108,6 +111,15 @@ export default function WorkspaceShell({
               (initialQueueData.source.type === "playlist" ? initialQueueData.source.id : ""),
           )?.images?.[0]?.url ?? null)
         : (playlistRailState?.likedSongs?.artwork?.url ?? null),
+    sourceType: initialQueueData?.source.type === "playlist" ? "playlist" : "liked",
+    canManage:
+      initialQueueData?.source.type === "playlist"
+        ? playlistRailState?.playlists.find(
+            p =>
+              p.id ===
+              (initialQueueData.source.type === "playlist" ? initialQueueData.source.id : ""),
+          )?.ownerId === spotifyUser?.spotifyId
+        : false,
   }));
 
   useEffect(() => {
@@ -240,6 +252,8 @@ export default function WorkspaceShell({
               title: "Liked Songs",
               total: playlistRailState?.likedSongs?.total ?? 0,
               artworkUrl: playlistRailState?.likedSongs?.artwork?.url ?? null,
+              sourceType: "liked" as const,
+              canManage: false,
             }
           : (() => {
               const found = playlistRailState?.playlists.find(p => p.id === item.id);
@@ -247,6 +261,8 @@ export default function WorkspaceShell({
                 title: item.name,
                 total: found?.totalTracks ?? 0,
                 artworkUrl: found?.images?.[0]?.url ?? null,
+                sourceType: "playlist" as const,
+                canManage: found?.ownerId === spotifyUser?.spotifyId,
               };
             })();
       setSelectedMeta(playlistMeta);
@@ -264,7 +280,7 @@ export default function WorkspaceShell({
         setLoading(false);
       }
     },
-    [fetchSourceQueue, playlistRailState],
+    [fetchSourceQueue, playlistRailState, spotifyUser?.spotifyId],
   );
 
   const handleLoadMore = useCallback(async () => {
@@ -358,6 +374,86 @@ export default function WorkspaceShell({
       }
     },
     [handleSelect, queueData?.source, redirectToLogin, spotifyUser?.spotifyId],
+  );
+
+  const handleRenamePlaylist = useCallback(
+    async (item: {
+      type: "playlist";
+      id: string;
+      name: string;
+      subtitle: string;
+      artworkUrl: string | null;
+      meta: {
+        totalTracks: number;
+        ownerId: string;
+        ownerName?: string | null;
+        isCollaborative: boolean;
+      };
+    }) => {
+      if (item.meta.ownerId !== spotifyUser?.spotifyId) return;
+
+      const nextName = window.prompt("Rename playlist", item.name)?.trim();
+      if (!nextName || nextName === item.name) return;
+
+      setRenamingPlaylistId(item.id);
+      setQueueError(null);
+
+      try {
+        const response = await fetch(`/api/playlists/${item.id}`, {
+          method: "PATCH",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ name: nextName }),
+        });
+        const body = await response.json().catch(() => ({}));
+
+        if (!response.ok) {
+          if (response.status === 401) {
+            redirectToLogin();
+            return;
+          }
+          throw new Error(body?.error || "Failed to rename playlist.");
+        }
+
+        setPlaylistRailState(prev =>
+          prev
+            ? {
+                ...prev,
+                playlists: prev.playlists.map(playlist =>
+                  playlist.id === item.id ? { ...playlist, name: nextName } : playlist,
+                ),
+              }
+            : prev,
+        );
+
+        if (queueData?.source.type === "playlist" && queueData.source.id === item.id) {
+          setQueueData(prev =>
+            prev?.source.type === "playlist" && prev.source.id === item.id
+              ? {
+                  ...prev,
+                  source: {
+                    ...prev.source,
+                    name: nextName,
+                  },
+                }
+              : prev,
+          );
+          setSelectedMeta(prev => ({
+            ...prev,
+            title: nextName,
+          }));
+        }
+
+        setQueueNotice(`Renamed playlist to "${nextName}".`);
+      } catch (error) {
+        console.error("Failed to rename playlist:", error);
+        setQueueError(error instanceof Error ? error.message : "Failed to rename playlist.");
+      } finally {
+        setRenamingPlaylistId(null);
+      }
+    },
+    [queueData?.source, redirectToLogin, spotifyUser?.spotifyId],
   );
 
   const submitConfirm = useCallback(
@@ -481,10 +577,7 @@ export default function WorkspaceShell({
             }
             appearance="workspace"
             activeId={activeId}
-            currentSpotifyUserId={spotifyUser?.spotifyId ?? null}
-            deletingPlaylistId={deletingPlaylistId}
             onSelect={item => handleSelect({ ...item, name: item.name })}
-            onDeletePlaylist={handleDeletePlaylist}
           />
         </div>
       )}
@@ -505,6 +598,54 @@ export default function WorkspaceShell({
             onReview={() => setMode("review")}
             onLoadMore={queueData?.nextOffset != null ? handleLoadMore : undefined}
             loadingMore={loadingMore}
+            onRenamePlaylist={
+              selectedMeta.sourceType === "playlist" &&
+              selectedMeta.canManage &&
+              queueData?.source.type === "playlist"
+                ? () =>
+                    void handleRenamePlaylist({
+                      type: "playlist",
+                      id: queueData.source.id,
+                      name: selectedMeta.title,
+                      subtitle: `${selectedMeta.total} tracks`,
+                      artworkUrl: selectedMeta.artworkUrl,
+                      meta: {
+                        totalTracks: selectedMeta.total,
+                        ownerId: spotifyUser?.spotifyId ?? "",
+                        ownerName: spotifyUser?.displayName ?? null,
+                        isCollaborative: false,
+                      },
+                    })
+                : undefined
+            }
+            onDeletePlaylist={
+              selectedMeta.sourceType === "playlist" &&
+              selectedMeta.canManage &&
+              queueData?.source.type === "playlist"
+                ? () =>
+                    void handleDeletePlaylist({
+                      type: "playlist",
+                      id: queueData.source.id,
+                      name: selectedMeta.title,
+                      subtitle: `${selectedMeta.total} tracks`,
+                      artworkUrl: selectedMeta.artworkUrl,
+                      meta: {
+                        totalTracks: selectedMeta.total,
+                        ownerId: spotifyUser?.spotifyId ?? "",
+                        ownerName: spotifyUser?.displayName ?? null,
+                        isCollaborative: false,
+                      },
+                    })
+                : undefined
+            }
+            renamingPlaylist={
+              renamingPlaylistId ===
+              (queueData?.source.type === "playlist" ? queueData.source.id : null)
+            }
+            deletingPlaylist={
+              deletingPlaylistId ===
+              (queueData?.source.type === "playlist" ? queueData.source.id : null)
+            }
           />
         ) : mode === "review" ? (
           <ReviewStage

@@ -11,9 +11,6 @@ type PlaylistRailClientProps = {
   appearance?: "workspace" | "card";
   activeId?: string;
   onSelect?: (item: ListItem) => void;
-  currentSpotifyUserId?: string | null;
-  deletingPlaylistId?: string | null;
-  onDeletePlaylist?: (item: Extract<ListItem, { type: "playlist" }>) => void;
 };
 
 type ListItem =
@@ -67,9 +64,6 @@ export default function PlaylistRailClient({
   appearance = "card",
   activeId: controlledActiveId,
   onSelect,
-  currentSpotifyUserId = null,
-  deletingPlaylistId = null,
-  onDeletePlaylist,
 }: PlaylistRailClientProps) {
   const isWorkspace = appearance === "workspace";
   const listHeightClass = isWorkspace ? "lg:flex-1 lg:min-h-0 max-h-[75vh]" : "max-h-[24rem]";
@@ -266,15 +260,18 @@ export default function PlaylistRailClient({
             {items.map((item, index) => {
               const isActive = item.id === activeId;
               const badgeColor = getColorForId(item.id, index);
-              const canDeletePlaylist =
-                item.type === "playlist" &&
-                Boolean(onDeletePlaylist) &&
-                item.meta.ownerId === currentSpotifyUserId;
               return (
-                <div
+                <button
                   key={item.id}
+                  type="button"
+                  onClick={() => {
+                    if (!controlledActiveId) {
+                      setInternalActiveId(item.id);
+                    }
+                    onSelect?.(item);
+                  }}
                   className={clsx(
-                    "group relative",
+                    "flex w-full items-center gap-4 px-4 py-3 text-left transition",
                     isWorkspace
                       ? isActive
                         ? "bg-[#1a1a1a]"
@@ -284,80 +281,45 @@ export default function PlaylistRailClient({
                         : "hover:bg-zinc-50",
                   )}
                 >
-                  <button
-                    type="button"
-                    onClick={() => {
-                      if (!controlledActiveId) {
-                        setInternalActiveId(item.id);
-                      }
-                      onSelect?.(item);
-                    }}
-                    className="flex w-full items-center gap-4 px-4 py-3 pr-16 text-left transition"
+                  <span
+                    className={clsx(
+                      "flex h-12 w-12 min-w-[3rem] overflow-hidden rounded-2xl border",
+                      isWorkspace ? "border-[#1f1f1f] bg-[#0a0a0a]" : "border-zinc-200 bg-zinc-50",
+                    )}
+                    style={
+                      item.artworkUrl
+                        ? undefined
+                        : badgeColor
+                          ? { backgroundColor: badgeColor }
+                          : undefined
+                    }
                   >
+                    {item.artworkUrl ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img
+                        src={item.artworkUrl}
+                        alt=""
+                        className="block h-full w-full object-cover"
+                        loading="lazy"
+                      />
+                    ) : (
+                      <span className="flex h-full w-full items-center justify-center text-sm font-semibold text-white">
+                        {item.id === "liked-songs" ? "\u2665" : item.name.charAt(0).toUpperCase()}
+                      </span>
+                    )}
+                  </span>
+                  <span className="flex min-w-0 flex-1 flex-col gap-0.5">
                     <span
                       className={clsx(
-                        "flex h-12 w-12 min-w-[3rem] overflow-hidden rounded-2xl border",
-                        isWorkspace
-                          ? "border-[#1f1f1f] bg-[#0a0a0a]"
-                          : "border-zinc-200 bg-zinc-50",
-                      )}
-                      style={
-                        item.artworkUrl
-                          ? undefined
-                          : badgeColor
-                            ? { backgroundColor: badgeColor }
-                            : undefined
-                      }
-                    >
-                      {item.artworkUrl ? (
-                        // eslint-disable-next-line @next/next/no-img-element
-                        <img
-                          src={item.artworkUrl}
-                          alt=""
-                          className="block h-full w-full object-cover"
-                          loading="lazy"
-                        />
-                      ) : (
-                        <span className="flex h-full w-full items-center justify-center text-sm font-semibold text-white">
-                          {item.id === "liked-songs" ? "\u2665" : item.name.charAt(0).toUpperCase()}
-                        </span>
-                      )}
-                    </span>
-                    <span className="flex min-w-0 flex-1 flex-col gap-0.5">
-                      <span
-                        className={clsx(
-                          "truncate text-sm font-semibold",
-                          isWorkspace ? "text-zinc-100" : "text-zinc-800",
-                        )}
-                      >
-                        {item.name}
-                      </span>
-                      <span className="truncate text-xs text-zinc-500">{item.subtitle}</span>
-                    </span>
-                  </button>
-                  {canDeletePlaylist ? (
-                    <button
-                      type="button"
-                      aria-label={`Delete ${item.name}`}
-                      disabled={deletingPlaylistId === item.id}
-                      onClick={event => {
-                        event.preventDefault();
-                        event.stopPropagation();
-                        onDeletePlaylist?.(item);
-                      }}
-                      className={clsx(
-                        "absolute right-4 top-1/2 -translate-y-1/2 rounded-full border px-2 py-1 text-[11px] uppercase tracking-wide transition",
-                        isWorkspace
-                          ? "border-zinc-800 text-zinc-500 opacity-0 group-hover:opacity-100 hover:border-rose-500 hover:text-rose-300"
-                          : "border-zinc-200 text-zinc-500 opacity-0 group-hover:opacity-100 hover:border-rose-400 hover:text-rose-500",
-                        deletingPlaylistId === item.id &&
-                          "cursor-not-allowed border-zinc-700 text-zinc-500 opacity-100",
+                        "truncate text-sm font-semibold",
+                        isWorkspace ? "text-zinc-100" : "text-zinc-800",
                       )}
                     >
-                      {deletingPlaylistId === item.id ? "..." : "Del"}
-                    </button>
-                  ) : null}
-                </div>
+                      {item.name}
+                    </span>
+                    <span className="truncate text-xs text-zinc-500">{item.subtitle}</span>
+                  </span>
+                </button>
               );
             })}
           </ul>

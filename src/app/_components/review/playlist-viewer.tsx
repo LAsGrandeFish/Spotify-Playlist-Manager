@@ -11,6 +11,8 @@ type PlaylistMeta = {
   title: string;
   total: number;
   artworkUrl: string | null;
+  sourceType?: "liked" | "playlist";
+  canManage?: boolean;
 };
 
 type PlaylistViewerProps = {
@@ -22,6 +24,10 @@ type PlaylistViewerProps = {
   onReview?: () => void;
   onLoadMore?: () => void;
   loadingMore?: boolean;
+  onRenamePlaylist?: () => void;
+  onDeletePlaylist?: () => void;
+  renamingPlaylist?: boolean;
+  deletingPlaylist?: boolean;
 };
 
 const gradientPalette = [
@@ -35,6 +41,31 @@ const gradientPalette = [
 ];
 
 const getGradient = (index: number) => gradientPalette[index % gradientPalette.length];
+
+const PencilIcon = () => (
+  <svg viewBox="0 0 24 24" aria-hidden="true" className="h-4 w-4" fill="none" stroke="currentColor">
+    <path
+      d="M4 20h4l10-10a2.12 2.12 0 0 0-3-3L5 17v3Z"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      strokeWidth="1.8"
+    />
+    <path d="m13.5 6.5 4 4" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.8" />
+  </svg>
+);
+
+const TrashIcon = () => (
+  <svg viewBox="0 0 24 24" aria-hidden="true" className="h-4 w-4" fill="none" stroke="currentColor">
+    <path d="M3 6h18" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.8" />
+    <path
+      d="M8 6V4h8v2m-9 0 1 14h8l1-14"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      strokeWidth="1.8"
+    />
+    <path d="M10 11v5M14 11v5" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.8" />
+  </svg>
+);
 
 const TrackRow = ({
   track,
@@ -88,6 +119,10 @@ export default function PlaylistViewer({
   onReview,
   onLoadMore,
   loadingMore = false,
+  onRenamePlaylist,
+  onDeletePlaylist,
+  renamingPlaylist = false,
+  deletingPlaylist = false,
 }: PlaylistViewerProps) {
   const tracks = data?.tracks ?? [];
   const total = data?.total ?? meta.total;
@@ -133,6 +168,28 @@ export default function PlaylistViewer({
                 {loadingMore ? "Loading more..." : "Load more"}
               </button>
             )}
+            {meta.sourceType === "playlist" && meta.canManage ? (
+              <>
+                <button
+                  type="button"
+                  onClick={onRenamePlaylist}
+                  disabled={renamingPlaylist || deletingPlaylist}
+                  className="inline-flex items-center gap-2 rounded-full border border-zinc-700 bg-black/20 px-4 py-2 text-sm font-semibold text-zinc-200 transition hover:border-emerald-500 hover:text-emerald-200 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  <PencilIcon />
+                  {renamingPlaylist ? "Renaming..." : "Rename"}
+                </button>
+                <button
+                  type="button"
+                  onClick={onDeletePlaylist}
+                  disabled={deletingPlaylist || renamingPlaylist}
+                  className="inline-flex items-center gap-2 rounded-full border border-zinc-700 bg-black/20 px-4 py-2 text-sm font-semibold text-zinc-200 transition hover:border-rose-500 hover:text-rose-300 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  <TrashIcon />
+                  {deletingPlaylist ? "Deleting..." : "Delete"}
+                </button>
+              </>
+            ) : null}
           </div>
         </div>
       </div>
