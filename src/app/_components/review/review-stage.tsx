@@ -555,28 +555,6 @@ export default function ReviewStage({
     };
   }, [playbackToken, sdkReady]);
 
-  useEffect(() => {
-    if (!deviceId || !playbackToken) return;
-    const transferPlayback = async () => {
-      try {
-        await fetch("https://api.spotify.com/v1/me/player", {
-          method: "PUT",
-          headers: {
-            Authorization: `Bearer ${playbackToken}`,
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            device_ids: [deviceId],
-            play: false,
-          }),
-        });
-      } catch (err) {
-        console.error("Failed to transfer playback:", err);
-      }
-    };
-    transferPlayback();
-  }, [deviceId, playbackToken]);
-
   const fetchPlaybackDeviceId = useCallback(async () => {
     if (!playbackToken) return null;
     try {
@@ -621,11 +599,6 @@ export default function ReviewStage({
   }, [previewUrl]);
 
   useEffect(() => {
-    if (!playerRef.current) return;
-    playerRef.current.pause().catch(() => undefined);
-  }, [currentTrack?.id]);
-
-  useEffect(() => {
     const audio = audioRef.current;
     if (!audio) return;
 
@@ -654,26 +627,37 @@ export default function ReviewStage({
     };
   }, []);
 
+  const startPreviewPlayback = useCallback(async () => {
+    const audio = audioRef.current;
+    if (!audio || !previewUrl) return false;
+    setPlaybackTokenError(null);
+    setPlaybackSource("preview");
+    try {
+      await audio.play();
+      setIsPlaying(true);
+      return true;
+    } catch {
+      setIsPlaying(false);
+      return false;
+    }
+  }, [previewUrl]);
+
   const startFullPlayback = useCallback(
     async (uri: string) => {
-      if (!playbackToken) return;
+      if (!playbackToken) return false;
       let targetDeviceId = deviceId;
       if (!targetDeviceId) {
         targetDeviceId = await fetchPlaybackDeviceId();
       }
       if (!targetDeviceId) {
         setPlaybackTokenError("Playback device unavailable. Try restarting the player.");
-        return;
+        return false;
       }
       try {
         const audio = audioRef.current;
         if (audio) {
           audio.pause();
           audio.currentTime = 0;
-        }
-        if (activeTrackUri && activeTrackUri === uri && playerRef.current) {
-          await playerRef.current.togglePlay();
-          return;
         }
         const transferResponse = await fetch("https://api.spotify.com/v1/me/player", {
           method: "PUT",
@@ -695,11 +679,11 @@ export default function ReviewStage({
               targetDeviceId = refreshedDeviceId;
             } else {
               setPlaybackTokenError(`Playback device error: ${errorText}`);
-              return;
+              return false;
             }
           } else {
             setPlaybackTokenError(`Playback device error: ${errorText}`);
-            return;
+            return false;
           }
         }
 
@@ -718,56 +702,86 @@ export default function ReviewStage({
         if (!playResponse.ok) {
           const errorText = await playResponse.text();
           setPlaybackTokenError(`Playback failed: ${errorText}`);
-          return;
+          return false;
         }
+        setPlaybackTokenError(null);
         setPlaybackSource("full");
         setActiveTrackUri(uri);
         setIsPlaying(true);
+        return true;
       } catch (err) {
         console.error("Failed to start full playback:", err);
+        return false;
       }
     },
-    [activeTrackUri, deviceId, fetchPlaybackDeviceId, playbackToken],
+    [deviceId, fetchPlaybackDeviceId, playbackToken],
   );
 
   useEffect(() => {
     if (!currentTrack) return;
-    if (currentTrack.uri && !canUseFullPlayback) return;
     if (lastAutoPlayTrackIdRef.current === currentTrack.id) return;
-    if (canUseFullPlayback && currentTrack.uri) {
-      startFullPlayback(currentTrack.uri);
+    let cancelled = false;
+
+    const autoPlay = async () => {
+      if (currentTrack.uri && playbackToken) {
+        const startedFullPlayback = await startFullPlayback(currentTrack.uri);
+        if (cancelled) return;
+        if (startedFullPlayback) {
+          lastAutoPlayTrackIdRef.current = currentTrack.id;
+          return;
+        }
+      }
+
+      if (!previewUrl) return;
+      const startedPreviewPlayback = await startPreviewPlayback();
+      if (cancelled || !startedPreviewPlayback) return;
       lastAutoPlayTrackIdRef.current = currentTrack.id;
-      return;
-    }
-    if (!previewUrl) return;
-    const audio = audioRef.current;
-    if (!audio) return;
-    setPlaybackSource("preview");
-    audio
-      .play()
-      .then(() => setIsPlaying(true))
-      .catch(() => setIsPlaying(false));
-    lastAutoPlayTrackIdRef.current = currentTrack.id;
-  }, [canUseFullPlayback, currentTrack, previewUrl, startFullPlayback]);
+    };
+
+    void autoPlay();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [currentTrack, playbackToken, previewUrl, startFullPlayback, startPreviewPlayback]);
 
   const togglePlayback = useCallback(async () => {
-    if (canUseFullPlayback && currentTrack?.uri) {
-      await startFullPlayback(currentTrack.uri);
-      return;
+    if (currentTrack?.uri && playbackToken) {
+      if (
+        playbackSourceRef.current === "full" &&
+        activeTrackUri === currentTrack.uri &&
+        playerRef.current
+      ) {
+        await playerRef.current.togglePlay();
+        return;
+      }
+      const startedFullPlayback = await startFullPlayback(currentTrack.uri);
+      if (startedFullPlayback) {
+        return;
+      }
     }
+
     const audio = audioRef.current;
     if (!audio || !previewUrl) return;
-    setPlaybackSource("preview");
+    if (playbackSourceRef.current !== "preview") {
+      await startPreviewPlayback();
+      return;
+    }
     if (audio.paused) {
-      audio
-        .play()
-        .then(() => setIsPlaying(true))
-        .catch(() => setIsPlaying(false));
+      await startPreviewPlayback();
     } else {
       audio.pause();
+      setPlaybackSource("preview");
       setIsPlaying(false);
     }
-  }, [canUseFullPlayback, currentTrack?.uri, previewUrl, startFullPlayback]);
+  }, [
+    activeTrackUri,
+    currentTrack?.uri,
+    playbackToken,
+    previewUrl,
+    startFullPlayback,
+    startPreviewPlayback,
+  ]);
 
   const restartPlayback = useCallback(async () => {
     if (canUseFullPlayback && playbackToken && deviceId) {
