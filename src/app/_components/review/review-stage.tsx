@@ -96,18 +96,21 @@ export type ReviewSummaryData = {
   pendingCount: number;
 };
 
-const gradients = [
-  "from-emerald-500 to-teal-400",
-  "from-rose-500 to-purple-500",
-  "from-blue-500 to-cyan-400",
-  "from-amber-500 to-orange-500",
-  "from-indigo-500 to-violet-500",
-  "from-fuchsia-500 to-pink-500",
-  "from-green-500 to-lime-400",
-  "from-sky-500 to-blue-700",
+const placeholderColors = [
+  "#34d399",
+  "#fb7185",
+  "#60a5fa",
+  "#f59e0b",
+  "#818cf8",
+  "#f472b6",
+  "#22c55e",
+  "#38bdf8",
 ];
 
-const randomGradient = () => gradients[Math.floor(Math.random() * gradients.length)];
+const getPlaceholderColor = (id: string) => {
+  const hash = id.split("").reduce((acc, char) => acc + char.charCodeAt(0), 0);
+  return placeholderColors[hash % placeholderColors.length];
+};
 
 export default function ReviewStage({
   playlistRailData,
@@ -1291,10 +1294,8 @@ export default function ReviewStage({
                         />
                       ) : (
                         <span
-                          className={clsx(
-                            "block h-full w-full bg-gradient-to-br",
-                            randomGradient(),
-                          )}
+                          className="block h-full w-full"
+                          style={{ backgroundColor: getPlaceholderColor(p.id) }}
                         />
                       )}
                     </span>
