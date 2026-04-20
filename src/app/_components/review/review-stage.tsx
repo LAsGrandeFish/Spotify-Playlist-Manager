@@ -287,6 +287,18 @@ export default function ReviewStage({
   }, [allPlaylists.length, railViewportWidth, ribbonOffset, ribbonStep, ribbonTrackWidth]);
   const canScrollRibbonLeft = ribbonOffset > 0;
   const canScrollRibbonRight = ribbonOffset < maxRibbonOffset;
+  const ribbonScrollbarThumbWidth = useMemo(() => {
+    if (!railViewportWidth || !ribbonTrackWidth) return 0;
+    const ratio = railViewportWidth / ribbonTrackWidth;
+    return Math.max(40, railViewportWidth * Math.min(1, ratio));
+  }, [railViewportWidth, ribbonTrackWidth]);
+  const ribbonScrollbarThumbOffset = useMemo(() => {
+    if (!railViewportWidth || !ribbonTrackWidth || !ribbonScrollbarThumbWidth) return 0;
+    const maxTranslate = Math.max(0, ribbonTrackWidth - railViewportWidth);
+    const maxThumbOffset = Math.max(0, railViewportWidth - ribbonScrollbarThumbWidth);
+    if (!maxTranslate || !maxThumbOffset) return 0;
+    return (ribbonTranslate / maxTranslate) * maxThumbOffset;
+  }, [railViewportWidth, ribbonScrollbarThumbWidth, ribbonTrackWidth, ribbonTranslate]);
 
   const currentTrack = trackStates[activeIndex] ?? null;
   const totalTracks = trackStates.length;
@@ -1304,6 +1316,19 @@ export default function ReviewStage({
               })}
             </div>
           </div>
+          {allPlaylists.length > RIBBON_KEYS.length ? (
+            <div className="mt-3 px-2">
+              <div className="h-1 rounded-full bg-[#1a1a1a]">
+                <div
+                  className="h-1 rounded-full bg-zinc-500/80 transition-transform duration-300 ease-[cubic-bezier(0.22,1,0.36,1)]"
+                  style={{
+                    width: `${ribbonScrollbarThumbWidth}px`,
+                    transform: `translate3d(${ribbonScrollbarThumbOffset}px, 0, 0)`,
+                  }}
+                />
+              </div>
+            </div>
+          ) : null}
         </div>
         <div className="flex min-w-[52px] flex-col items-center justify-center gap-2">
           <button
