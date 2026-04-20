@@ -5,6 +5,7 @@ import { prisma } from "@/lib/db";
 import {
   addTracksToPlaylist,
   createSpotifyPlaylist,
+  fetchSpotifyPlaylistTracks,
   removeTracksFromLibrary,
   removeTracksFromPlaylist,
 } from "@/lib/spotify/api";
@@ -24,6 +25,30 @@ const chunk = <T>(items: T[], size: number) => {
     chunks.push(items.slice(i, i + size));
   }
   return chunks;
+};
+
+const fetchPlaylistTrackIds = async (accessToken: string, playlistId: string) => {
+  const ids = new Set<string>();
+  let offset = 0;
+  const limit = 100;
+  const maxTracks = 5000;
+
+  while (true) {
+    const page = await fetchSpotifyPlaylistTracks(accessToken, playlistId, { limit, offset });
+    page.items.forEach(item => {
+      if (item.track?.id) {
+        ids.add(item.track.id);
+      }
+    });
+
+    if (!page.next || ids.size >= maxTracks) {
+      break;
+    }
+
+    offset += page.items.length;
+  }
+
+  return ids;
 };
 
 type ConfirmFailure = {
@@ -293,7 +318,31 @@ export async function POST(
     }
 
     for (const operation of addOperations) {
-      const trackUris = operation.trackIds.map(trackId => `spotify:track:${trackId}`);
+      let trackIdsToAdd = operation.trackIds;
+      if (!dryRun) {
+        try {
+          const existingTrackIds = await fetchPlaylistTrackIds(accessToken, operation.playlistId);
+          trackIdsToAdd = operation.trackIds.filter(trackId => !existingTrackIds.has(trackId));
+        } catch (error) {
+          failures.push({
+            stage: "add",
+            targetId: operation.playlistId,
+            originalTargetId: operation.originalTargetId,
+            trackIds: operation.trackIds,
+            message:
+              error instanceof Error
+                ? error.message
+                : "Failed to verify target playlist tracks before add.",
+          });
+          continue;
+        }
+      }
+
+      if (trackIdsToAdd.length === 0) {
+        continue;
+      }
+
+      const trackUris = trackIdsToAdd.map(trackId => `spotify:track:${trackId}`);
       addedRequested += trackUris.length;
       if (!dryRun) {
         for (const uriChunk of chunk(trackUris, 100)) {

@@ -1053,14 +1053,6 @@ export default function ReviewStage({
     // Placeholder: record action to history (not persisted)
     if (selectedPlaylists.size > 0 && currentTrack) {
       const targets = Array.from(selectedPlaylists);
-      const targetPayload = targets
-        .map(targetId => {
-          const match = allPlaylists.find(playlist => playlist.id === targetId);
-          return match
-            ? { playlistId: match.id, playlistName: match.name }
-            : { playlistId: targetId, playlistName: null };
-        })
-        .filter(Boolean);
       const membershipResults = await Promise.all(
         targets.map(async playlistId => {
           const ids = await fetchPlaylistTrackIds(playlistId);
@@ -1068,6 +1060,14 @@ export default function ReviewStage({
           return { playlistId, has };
         }),
       );
+      const targetPayload = membershipResults
+        .filter(result => !result.has)
+        .map(result => {
+          const match = allPlaylists.find(playlist => playlist.id === result.playlistId);
+          return match
+            ? { playlistId: match.id, playlistName: match.name }
+            : { playlistId: result.playlistId, playlistName: null };
+        });
 
       const duplicates = membershipResults.filter(r => r.has).length;
       const adds = membershipResults.length - duplicates;
@@ -1098,6 +1098,16 @@ export default function ReviewStage({
           ...prev,
           [currentTrack.id]: (prev[currentTrack.id] ?? 0) + adds,
         }));
+        setPlaylistTrackCache(prev => {
+          const next = { ...prev };
+          targetPayload.forEach(target => {
+            const existing = next[target.playlistId] ?? [];
+            next[target.playlistId] = existing.includes(currentTrack.id)
+              ? existing
+              : [...existing, currentTrack.id];
+          });
+          return next;
+        });
       }
       if (reviewSessionId && targetPayload.length > 0 && spotifyUser) {
         fetch(`/api/review/sessions/${reviewSessionId}/tracks/${currentTrack.id}/targets`, {

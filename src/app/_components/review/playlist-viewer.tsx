@@ -165,7 +165,7 @@ export default function PlaylistViewer({
           ) : (
             tracks.map((track, idx) => (
               <TrackRow
-                key={track.id ?? `${track.title}-${idx}`}
+                key={`${track.id}-${track.addedAt}-${(data?.offset ?? 0) + idx}`}
                 track={track}
                 index={(data?.offset ?? 0) + idx + 1}
                 artworkFallbackIndex={idx}
