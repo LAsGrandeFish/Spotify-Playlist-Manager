@@ -8,6 +8,8 @@ import type { PlaylistRailData } from "@/lib/spotify/library";
 import type { QueueData, QueueTrack } from "@/lib/spotify/queue";
 
 const PLAYER_NAME = "Spotify Playlist Manager";
+const RIBBON_CARD_GAP_PX = 12;
+const RIBBON_PEEK_PX = 34;
 
 type SpotifyPlayerState = {
   paused: boolean;
@@ -134,8 +136,12 @@ export default function ReviewStage({
   const [lastActionLabel, setLastActionLabel] = useState<string>("No actions yet.");
   const [playlistTrackCache, setPlaylistTrackCache] = useState<Record<string, string[]>>({});
   const [addCounts, setAddCounts] = useState<Record<string, number>>({});
+  const [railViewportWidth, setRailViewportWidth] = useState(0);
+  const [ribbonMotionDirection, setRibbonMotionDirection] = useState<"left" | "right" | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const playerRef = useRef<SpotifyPlayer | null>(null);
+  const railViewportRef = useRef<HTMLDivElement | null>(null);
+  const ribbonMotionTimeoutRef = useRef<number | null>(null);
   const playbackSourceRef = useRef<"none" | "preview" | "full">("none");
   const [playbackToken, setPlaybackToken] = useState<string | null>(null);
   const [playbackTokenError, setPlaybackTokenError] = useState<string | null>(null);
@@ -216,6 +222,38 @@ export default function ReviewStage({
     isSeekingRef.current = isSeeking;
   }, [isSeeking]);
 
+  useEffect(() => {
+    const viewport = railViewportRef.current;
+    if (!viewport) return;
+
+    const updateWidth = () => {
+      setRailViewportWidth(viewport.getBoundingClientRect().width);
+    };
+
+    updateWidth();
+
+    const observer = new ResizeObserver(() => updateWidth());
+    observer.observe(viewport);
+    return () => observer.disconnect();
+  }, []);
+
+  useEffect(() => {
+    if (!ribbonMotionDirection) return;
+    if (ribbonMotionTimeoutRef.current) {
+      window.clearTimeout(ribbonMotionTimeoutRef.current);
+    }
+    ribbonMotionTimeoutRef.current = window.setTimeout(() => {
+      setRibbonMotionDirection(null);
+      ribbonMotionTimeoutRef.current = null;
+    }, 220);
+    return () => {
+      if (ribbonMotionTimeoutRef.current) {
+        window.clearTimeout(ribbonMotionTimeoutRef.current);
+        ribbonMotionTimeoutRef.current = null;
+      }
+    };
+  }, [ribbonMotionDirection]);
+
   const allPlaylists = useMemo(() => {
     const base =
       playlistRailData?.playlists.map(p => ({
@@ -226,7 +264,29 @@ export default function ReviewStage({
     return [...localPlaylists, ...base];
   }, [playlistRailData, localPlaylists]);
 
+  const maxRibbonOffset = Math.max(0, allPlaylists.length - RIBBON_KEYS.length);
   const visiblePlaylists = allPlaylists.slice(ribbonOffset, ribbonOffset + RIBBON_KEYS.length);
+  const ribbonCardWidth = useMemo(() => {
+    if (!railViewportWidth) return 112;
+    return Math.max(
+      96,
+      (railViewportWidth - RIBBON_CARD_GAP_PX * (RIBBON_KEYS.length - 1) - RIBBON_PEEK_PX * 2) /
+        RIBBON_KEYS.length,
+    );
+  }, [railViewportWidth]);
+  const ribbonStep = ribbonCardWidth + RIBBON_CARD_GAP_PX;
+  const ribbonTrackWidth = useMemo(() => {
+    if (!allPlaylists.length) return 0;
+    return allPlaylists.length * ribbonCardWidth + (allPlaylists.length - 1) * RIBBON_CARD_GAP_PX;
+  }, [allPlaylists.length, ribbonCardWidth]);
+  const ribbonTranslate = useMemo(() => {
+    if (!railViewportWidth || !allPlaylists.length) return 0;
+    const maxTranslate = Math.max(0, ribbonTrackWidth - railViewportWidth);
+    const desiredTranslate = Math.max(0, ribbonOffset * ribbonStep - RIBBON_PEEK_PX);
+    return Math.min(desiredTranslate, maxTranslate);
+  }, [allPlaylists.length, railViewportWidth, ribbonOffset, ribbonStep, ribbonTrackWidth]);
+  const canScrollRibbonLeft = ribbonOffset > 0;
+  const canScrollRibbonRight = ribbonOffset < maxRibbonOffset;
 
   const currentTrack = trackStates[activeIndex] ?? null;
   const totalTracks = trackStates.length;
@@ -1059,21 +1119,31 @@ export default function ReviewStage({
     setLastActionLabel("Created new playlist");
   }, [newPlaylistName]);
 
+  const shiftRibbon = useCallback(
+    (direction: "left" | "right") => {
+      setRibbonMotionDirection(direction);
+      setRibbonOffset(offset => {
+        if (direction === "left") {
+          return Math.max(0, offset - 1);
+        }
+        return Math.min(maxRibbonOffset, offset + 1);
+      });
+    },
+    [maxRibbonOffset],
+  );
+
   useEffect(() => {
     const handleKey = (event: KeyboardEvent) => {
       if (event.target && (event.target as HTMLElement).tagName === "INPUT") return;
       const key = event.key.toUpperCase();
       if (key === "A") {
         event.preventDefault();
-        setRibbonOffset(offset => Math.max(0, offset - 1));
+        shiftRibbon("left");
         return;
       }
       if (key === ";") {
         event.preventDefault();
-        setRibbonOffset(offset => {
-          const maxOffset = Math.max(0, allPlaylists.length - RIBBON_KEYS.length);
-          return Math.min(maxOffset, offset + 1);
-        });
+        shiftRibbon("right");
         return;
       }
       const idx = RIBBON_KEYS.findIndex(k => k === key);
@@ -1118,9 +1188,9 @@ export default function ReviewStage({
     window.addEventListener("keydown", handleKey);
     return () => window.removeEventListener("keydown", handleKey);
   }, [
-    allPlaylists.length,
     confirmAdd,
     restartPlayback,
+    shiftRibbon,
     togglePlayback,
     togglePlaylistSelection,
     setAction,
@@ -1134,8 +1204,17 @@ export default function ReviewStage({
         <div className="flex min-w-[52px] flex-col items-center justify-center gap-2">
           <button
             type="button"
-            onClick={() => setRibbonOffset(offset => Math.max(0, offset - 1))}
-            className="flex h-9 w-9 items-center justify-center rounded-full border border-zinc-700 text-sm text-zinc-300 transition hover:border-emerald-500 hover:text-emerald-200"
+            onClick={() => shiftRibbon("left")}
+            disabled={!canScrollRibbonLeft}
+            className={clsx(
+              "flex h-9 w-9 items-center justify-center rounded-full border text-sm transition duration-200 active:scale-95",
+              canScrollRibbonLeft
+                ? "border-zinc-700 text-zinc-300 hover:border-emerald-500 hover:text-emerald-200"
+                : "cursor-not-allowed border-zinc-800 text-zinc-600",
+              ribbonMotionDirection === "left" &&
+                canScrollRibbonLeft &&
+                "border-emerald-500/80 bg-emerald-500/10 text-emerald-200 shadow-[0_0_0_6px_rgba(16,185,129,0.08)]",
+            )}
           >
             &lt;
           </button>
@@ -1143,56 +1222,103 @@ export default function ReviewStage({
             A
           </span>
         </div>
-        <div className="flex flex-1 items-stretch gap-3 overflow-hidden">
-          {visiblePlaylists.map((p, idx) => {
-            const hotkey = RIBBON_KEYS[idx];
-            const selected = selectedPlaylists.has(p.id);
-            return (
-              <button
-                key={p.id}
-                type="button"
-                onClick={() => togglePlaylistSelection(p.id)}
-                className={clsx(
-                  "group relative flex min-h-[156px] min-w-[92px] max-w-[132px] flex-1 flex-col items-center justify-center gap-1.5 rounded-xl border px-3 py-2.5 text-xs transition",
-                  selected
-                    ? "border-emerald-500 bg-[#1a1a1a] ring-2 ring-emerald-400/60"
-                    : "border-[#202020] bg-gradient-to-b from-[#1b1b1b] to-[#151515] hover:border-emerald-500/40 hover:bg-[#1a1a1a]",
-                )}
-              >
-                <span className="relative block h-14 w-14 overflow-hidden rounded-2xl border border-[#262626] bg-gradient-to-br from-zinc-700 to-zinc-900">
-                  {p.artworkUrl ? (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img
-                      src={p.artworkUrl}
-                      alt=""
-                      className="h-full w-full object-cover"
-                      loading="lazy"
-                    />
-                  ) : (
+        <div className="relative min-w-0 flex-1">
+          {canScrollRibbonLeft ? (
+            <div className="pointer-events-none absolute inset-y-0 left-0 z-10 w-6 bg-gradient-to-r from-[#121212] via-[#121212]/85 to-transparent" />
+          ) : null}
+          {canScrollRibbonRight ? (
+            <div className="pointer-events-none absolute inset-y-0 right-0 z-10 w-6 bg-gradient-to-l from-[#121212] via-[#121212]/85 to-transparent" />
+          ) : null}
+          <div ref={railViewportRef} className="overflow-hidden">
+            <div
+              className="flex items-stretch gap-3 transition-transform duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] will-change-transform"
+              style={{
+                transform: `translate3d(-${ribbonTranslate}px, 0, 0)`,
+                width: ribbonTrackWidth ? `${ribbonTrackWidth}px` : undefined,
+              }}
+            >
+              {allPlaylists.map((p, idx) => {
+                const hotkeyIndex = idx - ribbonOffset;
+                const hotkey =
+                  hotkeyIndex >= 0 && hotkeyIndex < RIBBON_KEYS.length
+                    ? RIBBON_KEYS[hotkeyIndex]
+                    : null;
+                const isVisibleCard = hotkey !== null;
+                const isPeekCard =
+                  idx === ribbonOffset - 1 || idx === ribbonOffset + RIBBON_KEYS.length;
+                const selected = selectedPlaylists.has(p.id);
+                return (
+                  <button
+                    key={p.id}
+                    type="button"
+                    onClick={() => togglePlaylistSelection(p.id)}
+                    style={{
+                      width: `${ribbonCardWidth}px`,
+                      flex: `0 0 ${ribbonCardWidth}px`,
+                    }}
+                    className={clsx(
+                      "group relative flex min-h-[156px] min-w-0 flex-col items-center justify-center gap-1.5 rounded-xl border px-3 py-2.5 text-xs transition-[transform,opacity,border-color,background-color,box-shadow,filter] duration-300",
+                      selected
+                        ? "border-emerald-500 bg-[#1a1a1a] ring-2 ring-emerald-400/60"
+                        : "border-[#202020] bg-gradient-to-b from-[#1b1b1b] to-[#151515] hover:border-emerald-500/40 hover:bg-[#1a1a1a]",
+                      isVisibleCard
+                        ? "scale-100 opacity-100"
+                        : isPeekCard
+                          ? "scale-[0.985] opacity-70 saturate-75"
+                          : "scale-[0.97] opacity-45 saturate-50",
+                    )}
+                  >
+                    <span className="relative block h-14 w-14 overflow-hidden rounded-2xl border border-[#262626] bg-gradient-to-br from-zinc-700 to-zinc-900 shadow-[0_10px_24px_rgba(0,0,0,0.25)]">
+                      {p.artworkUrl ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img
+                          src={p.artworkUrl}
+                          alt=""
+                          className="h-full w-full object-cover"
+                          loading="lazy"
+                        />
+                      ) : (
+                        <span
+                          className={clsx(
+                            "block h-full w-full bg-gradient-to-br",
+                            randomGradient(),
+                          )}
+                        />
+                      )}
+                    </span>
+                    <span className="flex min-h-[2rem] w-full items-center justify-center px-1 text-center text-[15px] font-medium leading-normal text-zinc-100">
+                      <span className="block w-full truncate">{p.name}</span>
+                    </span>
                     <span
-                      className={clsx("block h-full w-full bg-gradient-to-br", randomGradient())}
-                    />
-                  )}
-                </span>
-                <span className="flex min-h-[2rem] w-full items-center justify-center px-1 text-center text-[15px] font-medium leading-normal text-zinc-100">
-                  <span className="block w-full truncate">{p.name}</span>
-                </span>
-                <span className="flex items-center justify-center rounded-lg border border-zinc-700 px-2 py-1 text-[11px] uppercase tracking-wide text-zinc-200">
-                  {hotkey}
-                </span>
-              </button>
-            );
-          })}
+                      className={clsx(
+                        "flex items-center justify-center rounded-lg border px-2 py-1 text-[11px] uppercase tracking-wide transition-colors duration-300",
+                        hotkey
+                          ? "border-zinc-700 text-zinc-200"
+                          : "border-transparent text-transparent",
+                      )}
+                    >
+                      {hotkey ?? " "}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
         </div>
         <div className="flex min-w-[52px] flex-col items-center justify-center gap-2">
           <button
             type="button"
-            onClick={() =>
-              setRibbonOffset(offset =>
-                Math.min(Math.max(0, allPlaylists.length - RIBBON_KEYS.length), offset + 1),
-              )
-            }
-            className="flex h-9 w-9 items-center justify-center rounded-full border border-zinc-700 text-sm text-zinc-300 transition hover:border-emerald-500 hover:text-emerald-200"
+            onClick={() => shiftRibbon("right")}
+            disabled={!canScrollRibbonRight}
+            className={clsx(
+              "flex h-9 w-9 items-center justify-center rounded-full border text-sm transition duration-200 active:scale-95",
+              canScrollRibbonRight
+                ? "border-zinc-700 text-zinc-300 hover:border-emerald-500 hover:text-emerald-200"
+                : "cursor-not-allowed border-zinc-800 text-zinc-600",
+              ribbonMotionDirection === "right" &&
+                canScrollRibbonRight &&
+                "border-emerald-500/80 bg-emerald-500/10 text-emerald-200 shadow-[0_0_0_6px_rgba(16,185,129,0.08)]",
+            )}
           >
             &gt;
           </button>
