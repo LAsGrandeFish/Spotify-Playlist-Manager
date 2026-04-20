@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import clsx from "clsx";
 
@@ -67,6 +67,8 @@ export default function PlaylistRailClient({
   const isWorkspace = appearance === "workspace";
   const listHeightClass = isWorkspace ? "lg:flex-1 lg:min-h-0 max-h-[75vh]" : "max-h-[24rem]";
   const playlistCount = data.playlists.length;
+  const scrollContainerRef = useRef<HTMLUListElement | null>(null);
+  const scrollFadeTimeoutRef = useRef<number | null>(null);
 
   const items = useMemo<ListItem[]>(() => {
     const likedArtwork = data.likedSongs.artwork?.url ?? null;
@@ -96,7 +98,27 @@ export default function PlaylistRailClient({
   }, [data]);
 
   const [internalActiveId, setInternalActiveId] = useState<string>(DEFAULT_ACTIVE_ID);
+  const [isScrollbarVisible, setIsScrollbarVisible] = useState(false);
+  const [isScrollbarHovered, setIsScrollbarHovered] = useState(false);
+  const [scrollMetrics, setScrollMetrics] = useState({
+    height: 0,
+    scrollHeight: 0,
+    scrollTop: 0,
+  });
   const activeId = controlledActiveId ?? internalActiveId;
+  const scrollbarThumbHeight = useMemo(() => {
+    const { height, scrollHeight } = scrollMetrics;
+    if (!height || !scrollHeight || scrollHeight <= height) return 0;
+    return Math.max(28, (height / scrollHeight) * height);
+  }, [scrollMetrics]);
+  const scrollbarThumbOffset = useMemo(() => {
+    const { height, scrollHeight, scrollTop } = scrollMetrics;
+    if (!height || !scrollHeight || scrollHeight <= height || !scrollbarThumbHeight) return 0;
+    const maxScrollTop = scrollHeight - height;
+    const maxThumbOffset = height - scrollbarThumbHeight;
+    if (!maxScrollTop || !maxThumbOffset) return 0;
+    return (scrollTop / maxScrollTop) * maxThumbOffset;
+  }, [scrollMetrics, scrollbarThumbHeight]);
 
   const handleKeyDown = useCallback(
     (event: KeyboardEvent) => {
@@ -131,6 +153,48 @@ export default function PlaylistRailClient({
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [handleKeyDown]);
 
+  useEffect(() => {
+    const container = scrollContainerRef.current;
+    if (!container) return;
+
+    const syncMetrics = () => {
+      setScrollMetrics({
+        height: container.clientHeight,
+        scrollHeight: container.scrollHeight,
+        scrollTop: container.scrollTop,
+      });
+    };
+
+    const showScrollbar = () => {
+      setIsScrollbarVisible(true);
+      if (scrollFadeTimeoutRef.current) {
+        window.clearTimeout(scrollFadeTimeoutRef.current);
+      }
+      scrollFadeTimeoutRef.current = window.setTimeout(() => {
+        setIsScrollbarVisible(false);
+        scrollFadeTimeoutRef.current = null;
+      }, 700);
+    };
+
+    const handleScroll = () => {
+      syncMetrics();
+      showScrollbar();
+    };
+
+    syncMetrics();
+    container.addEventListener("scroll", handleScroll, { passive: true });
+    window.addEventListener("resize", syncMetrics);
+
+    return () => {
+      container.removeEventListener("scroll", handleScroll);
+      window.removeEventListener("resize", syncMetrics);
+      if (scrollFadeTimeoutRef.current) {
+        window.clearTimeout(scrollFadeTimeoutRef.current);
+        scrollFadeTimeoutRef.current = null;
+      }
+    };
+  }, [items.length, isWorkspace]);
+
   return (
     <div
       className={clsx(
@@ -154,7 +218,7 @@ export default function PlaylistRailClient({
               isWorkspace ? "bg-[#1f1f1f] text-zinc-400" : "bg-zinc-200 text-zinc-600",
             )}
           >
-            ≡
+            &#8801;
           </span>
           <div>
             <p className="text-xs uppercase tracking-wide text-zinc-500">Your Library</p>
@@ -178,79 +242,106 @@ export default function PlaylistRailClient({
             </div>
           </div>
         </div>
-        <ul
-          className={clsx(
-            "custom-scrollbar overflow-y-auto px-1 pb-4 pr-1",
-            listHeightClass,
-            isWorkspace ? "divide-y divide-[#151515]" : "divide-y divide-zinc-100",
-          )}
+        <div
+          className="group relative"
+          onMouseEnter={() => setIsScrollbarHovered(true)}
+          onMouseLeave={() => setIsScrollbarHovered(false)}
         >
-          {items.map((item, index) => {
-            const isActive = item.id === activeId;
-            const badgeColor = getColorForId(item.id, index);
-            return (
-              <button
-                key={item.id}
-                type="button"
-                onClick={() => {
-                  if (!controlledActiveId) {
-                    setInternalActiveId(item.id);
-                  }
-                  onSelect?.(item);
-                }}
-                className={clsx(
-                  "flex w-full items-center gap-4 px-4 py-3 text-left transition",
-                  isWorkspace
-                    ? isActive
-                      ? "bg-[#1a1a1a]"
-                      : "hover:bg-[#0f0f0f]"
-                    : isActive
-                      ? "bg-emerald-50"
-                      : "hover:bg-zinc-50",
-                )}
-              >
-                <span
+          <ul
+            ref={scrollContainerRef}
+            className={clsx(
+              "custom-scrollbar overflow-y-auto px-1 pb-4 pr-2",
+              listHeightClass,
+              isWorkspace ? "divide-y divide-[#151515]" : "divide-y divide-zinc-100",
+            )}
+          >
+            {items.map((item, index) => {
+              const isActive = item.id === activeId;
+              const badgeColor = getColorForId(item.id, index);
+              return (
+                <button
+                  key={item.id}
+                  type="button"
+                  onClick={() => {
+                    if (!controlledActiveId) {
+                      setInternalActiveId(item.id);
+                    }
+                    onSelect?.(item);
+                  }}
                   className={clsx(
-                    "flex h-12 w-12 min-w-[3rem] overflow-hidden rounded-2xl border",
-                    isWorkspace ? "border-[#1f1f1f] bg-[#0a0a0a]" : "border-zinc-200 bg-zinc-50",
+                    "flex w-full items-center gap-4 px-4 py-3 text-left transition",
+                    isWorkspace
+                      ? isActive
+                        ? "bg-[#1a1a1a]"
+                        : "hover:bg-[#0f0f0f]"
+                      : isActive
+                        ? "bg-emerald-50"
+                        : "hover:bg-zinc-50",
                   )}
-                  style={
-                    item.artworkUrl
-                      ? undefined
-                      : badgeColor
-                        ? { backgroundColor: badgeColor }
-                        : undefined
-                  }
                 >
-                  {item.artworkUrl ? (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img
-                      src={item.artworkUrl}
-                      alt=""
-                      className="block h-full w-full object-cover"
-                      loading="lazy"
-                    />
-                  ) : (
-                    <span className="flex h-full w-full items-center justify-center text-sm font-semibold text-white">
-                      {item.id === "liked-songs" ? "♥" : item.name.charAt(0).toUpperCase()}
-                    </span>
-                  )}
-                </span>
-                <span className="flex flex-col gap-0.5">
                   <span
                     className={clsx(
-                      "text-sm font-semibold",
-                      isWorkspace ? "text-zinc-100" : "text-zinc-800",
+                      "flex h-12 w-12 min-w-[3rem] overflow-hidden rounded-2xl border",
+                      isWorkspace ? "border-[#1f1f1f] bg-[#0a0a0a]" : "border-zinc-200 bg-zinc-50",
                     )}
+                    style={
+                      item.artworkUrl
+                        ? undefined
+                        : badgeColor
+                          ? { backgroundColor: badgeColor }
+                          : undefined
+                    }
                   >
-                    {item.name}
+                    {item.artworkUrl ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img
+                        src={item.artworkUrl}
+                        alt=""
+                        className="block h-full w-full object-cover"
+                        loading="lazy"
+                      />
+                    ) : (
+                      <span className="flex h-full w-full items-center justify-center text-sm font-semibold text-white">
+                        {item.id === "liked-songs" ? "\u2665" : item.name.charAt(0).toUpperCase()}
+                      </span>
+                    )}
                   </span>
-                  <span className="text-xs text-zinc-500">{item.subtitle}</span>
-                </span>
-              </button>
-            );
-          })}
-        </ul>
+                  <span className="flex flex-col gap-0.5">
+                    <span
+                      className={clsx(
+                        "text-sm font-semibold",
+                        isWorkspace ? "text-zinc-100" : "text-zinc-800",
+                      )}
+                    >
+                      {item.name}
+                    </span>
+                    <span className="text-xs text-zinc-500">{item.subtitle}</span>
+                  </span>
+                </button>
+              );
+            })}
+          </ul>
+          {scrollbarThumbHeight > 0 ? (
+            <div
+              className={clsx(
+                "pointer-events-none absolute bottom-4 right-1 top-1 w-1.5 rounded-full transition-opacity duration-300",
+                isWorkspace ? "bg-white/[0.03]" : "bg-zinc-300/20",
+                isScrollbarVisible || isScrollbarHovered ? "opacity-100" : "opacity-0",
+              )}
+            >
+              <div
+                className={clsx(
+                  "absolute right-0 w-1 rounded-full",
+                  isWorkspace ? "bg-zinc-400/70" : "bg-zinc-500/70",
+                )}
+                style={{
+                  height: `${scrollbarThumbHeight}px`,
+                  transform: `translateY(${scrollbarThumbOffset}px)`,
+                }}
+              />
+            </div>
+          ) : null}
+        </div>
       </div>
     </div>
   );

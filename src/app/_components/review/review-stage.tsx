@@ -1317,10 +1317,10 @@ export default function ReviewStage({
             </div>
           </div>
           {allPlaylists.length > RIBBON_KEYS.length ? (
-            <div className="mt-3 px-2">
-              <div className="h-1 rounded-full bg-[#1a1a1a]">
+            <div className="mt-3 px-3">
+              <div className="h-[2px] rounded-full bg-white/[0.04]">
                 <div
-                  className="h-1 rounded-full bg-zinc-500/80 transition-transform duration-300 ease-[cubic-bezier(0.22,1,0.36,1)]"
+                  className="h-[2px] rounded-full bg-zinc-400/45 transition-transform duration-300 ease-[cubic-bezier(0.22,1,0.36,1)]"
                   style={{
                     width: `${ribbonScrollbarThumbWidth}px`,
                     transform: `translate3d(${ribbonScrollbarThumbOffset}px, 0, 0)`,
