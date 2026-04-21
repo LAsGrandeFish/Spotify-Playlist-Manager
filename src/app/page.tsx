@@ -146,49 +146,97 @@ export default async function Home() {
   }
 
   return (
-    <main className="mx-auto flex min-h-screen max-w-5xl flex-col gap-12 px-6 pb-16 pt-24 font-sans sm:px-12 lg:px-20">
-      <section className="flex flex-col gap-6">
-        <span className="w-fit rounded-full bg-emerald-100 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-emerald-700">
-          Spotify Playlist Manager
-        </span>
-        <h1 className="text-4xl font-semibold tracking-tight sm:text-5xl">
-          Keyboard-first triage for massive Spotify libraries.
-        </h1>
-        <p className="max-w-2xl text-lg text-zinc-600">
-          Review tracks in rapid batches, queue playlist actions, and confirm once when you are
-          ready. Built for power users who live inside playlists and crave snappy tooling.
-        </p>
-        <div className="flex flex-wrap items-center gap-3 text-sm text-zinc-600">
-          <span className="rounded-full border border-zinc-200 px-3 py-1">
-            App Router + TypeScript
-          </span>
-          <span className="rounded-full border border-zinc-200 px-3 py-1">
-            Tailwind UI primitives
-          </span>
-          <span className="rounded-full border border-zinc-200 px-3 py-1">
-            OAuth + Spotify Web API
-          </span>
-        </div>
+    <main className="relative isolate flex min-h-screen items-center justify-center overflow-hidden px-4 py-10 font-sans sm:px-6 lg:px-10">
+      <div className="absolute inset-x-0 top-[-14rem] h-[28rem] bg-[radial-gradient(circle_at_top,rgba(29,185,84,0.22),transparent_62%)]" />
+      <div className="absolute left-[-8rem] top-1/3 h-72 w-72 rounded-full bg-emerald-500/10 blur-3xl" />
+      <div className="absolute right-[-7rem] top-16 h-64 w-64 rounded-full bg-zinc-100/5 blur-3xl" />
 
-        <div className="mt-6 flex flex-col gap-4 rounded-2xl border border-zinc-200 bg-white/60 p-6 text-sm shadow-sm backdrop-blur">
-          <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-            <div className="space-y-1">
-              <p className="text-base font-medium text-zinc-900">
-                Connect your Spotify account to begin testing.
-              </p>
-              <p className="text-xs text-zinc-600">
-                We store tokens in http-only cookies and auto-refresh them when they near expiry.
-              </p>
-              {authState.error ? (
-                <p className="text-xs font-medium text-amber-600">{authState.error}</p>
-              ) : null}
+      <section className="relative w-full max-w-6xl overflow-hidden rounded-[34px] border border-white/10 bg-[#0c0c0c]/95 shadow-[0_35px_120px_rgba(0,0,0,0.55)]">
+        <div className="absolute inset-0 bg-[linear-gradient(135deg,rgba(29,185,84,0.08),transparent_28%,transparent_72%,rgba(255,255,255,0.03))]" />
+        <div className="relative grid gap-12 px-6 py-8 sm:px-8 sm:py-10 lg:grid-cols-[minmax(0,1.2fr)_minmax(320px,0.8fr)] lg:items-end lg:px-12 lg:py-12">
+          <div className="flex flex-col gap-8">
+            <div className="flex items-center gap-4">
+              <span className="flex h-14 w-14 items-center justify-center rounded-[20px] bg-emerald-500 text-2xl font-semibold text-black shadow-[0_18px_45px_rgba(29,185,84,0.28)]">
+                ♫
+              </span>
+              <div>
+                <p className="text-xs font-medium uppercase tracking-[0.34em] text-emerald-300/90">
+                  Spotify
+                </p>
+                <p className="text-lg font-semibold tracking-tight text-zinc-100 sm:text-xl">
+                  Playlist Manager
+                </p>
+              </div>
             </div>
-            <Link
-              href="/api/auth/login"
-              className="inline-flex items-center justify-center gap-2 rounded-full bg-emerald-600 px-5 py-2 text-sm font-semibold text-white transition hover:bg-emerald-500"
-            >
-              Log in with Spotify
-            </Link>
+
+            <div className="space-y-5">
+              <span className="inline-flex w-fit items-center rounded-full border border-emerald-400/20 bg-emerald-400/10 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.24em] text-emerald-200">
+                Fast playlist triage
+              </span>
+              <h1 className="max-w-4xl text-4xl font-semibold tracking-[-0.05em] text-white sm:text-5xl lg:text-6xl">
+                Spotify Playlist Manager
+              </h1>
+              <p className="max-w-3xl text-lg leading-8 text-zinc-300 sm:text-xl">
+                Sort through large playlists with a keyboard-first review flow, stage your moves in
+                batches, and confirm everything in one pass when the library looks right.
+              </p>
+            </div>
+
+            <div className="grid gap-3 text-sm text-zinc-300 sm:grid-cols-3">
+              <div className="rounded-2xl border border-white/8 bg-white/[0.03] px-4 py-4">
+                <p className="text-[11px] uppercase tracking-[0.24em] text-zinc-500">Review</p>
+                <p className="mt-2 text-base font-medium text-zinc-100">
+                  Rapid track-by-track decisions without losing context.
+                </p>
+              </div>
+              <div className="rounded-2xl border border-white/8 bg-white/[0.03] px-4 py-4">
+                <p className="text-[11px] uppercase tracking-[0.24em] text-zinc-500">Organize</p>
+                <p className="mt-2 text-base font-medium text-zinc-100">
+                  Move songs, create playlists, rename, and clean up in one workspace.
+                </p>
+              </div>
+              <div className="rounded-2xl border border-white/8 bg-white/[0.03] px-4 py-4">
+                <p className="text-[11px] uppercase tracking-[0.24em] text-zinc-500">Confirm</p>
+                <p className="mt-2 text-base font-medium text-zinc-100">
+                  Queue actions safely first, then apply changes only when you are ready.
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <div className="rounded-[28px] border border-white/10 bg-[linear-gradient(180deg,rgba(255,255,255,0.08),rgba(255,255,255,0.03))] p-6 shadow-[0_24px_60px_rgba(0,0,0,0.35)] backdrop-blur-xl sm:p-7">
+            <div className="flex flex-col gap-6">
+              <div className="space-y-2">
+                <p className="text-xs font-semibold uppercase tracking-[0.28em] text-zinc-400">
+                  Connect Spotify
+                </p>
+                <h2 className="text-2xl font-semibold tracking-tight text-white">
+                  Sign in to start organizing your library.
+                </h2>
+                <p className="text-sm leading-6 text-zinc-300">
+                  Use your Spotify account to load playlists, review tracks, and manage changes from
+                  one desktop-style workspace.
+                </p>
+              </div>
+
+              <div className="rounded-2xl border border-white/8 bg-black/20 px-4 py-4 text-sm text-zinc-300">
+                <p className="font-medium text-zinc-100">Session handling stays lightweight.</p>
+                <p className="mt-1 text-xs leading-5 text-zinc-400">
+                  Tokens are stored in http-only cookies and refreshed automatically before they
+                  expire.
+                </p>
+                {authState.error ? (
+                  <p className="mt-3 text-xs font-medium text-amber-300">{authState.error}</p>
+                ) : null}
+              </div>
+
+              <Link
+                href="/api/auth/login"
+                className="inline-flex items-center justify-center rounded-full bg-emerald-500 px-5 py-3 text-sm font-semibold text-black transition hover:bg-emerald-400"
+              >
+                Log in with Spotify
+              </Link>
+            </div>
           </div>
         </div>
       </section>
