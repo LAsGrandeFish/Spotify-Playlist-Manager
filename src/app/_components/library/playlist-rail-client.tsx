@@ -10,6 +10,7 @@ type PlaylistRailClientProps = {
   data: PlaylistRailData;
   appearance?: "workspace" | "card";
   activeId?: string;
+  currentSpotifyUserId?: string | null;
   onSelect?: (item: ListItem) => void;
 };
 
@@ -63,6 +64,7 @@ export default function PlaylistRailClient({
   data,
   appearance = "card",
   activeId: controlledActiveId,
+  currentSpotifyUserId,
   onSelect,
 }: PlaylistRailClientProps) {
   const isWorkspace = appearance === "workspace";
@@ -98,6 +100,14 @@ export default function PlaylistRailClient({
       ...playlistItems,
     ];
   }, [data]);
+
+  const firstExternalPlaylistIndex = useMemo(() => {
+    if (!isWorkspace || !currentSpotifyUserId) return -1;
+
+    return items.findIndex(
+      item => item.type === "playlist" && item.meta.ownerId !== currentSpotifyUserId,
+    );
+  }, [currentSpotifyUserId, isWorkspace, items]);
 
   const [internalActiveId, setInternalActiveId] = useState<string>(DEFAULT_ACTIVE_ID);
   const [isScrollbarVisible, setIsScrollbarVisible] = useState(false);
@@ -261,65 +271,79 @@ export default function PlaylistRailClient({
               const isActive = item.id === activeId;
               const badgeColor = getColorForId(item.id, index);
               return (
-                <button
-                  key={item.id}
-                  type="button"
-                  onClick={() => {
-                    if (!controlledActiveId) {
-                      setInternalActiveId(item.id);
-                    }
-                    onSelect?.(item);
-                  }}
-                  className={clsx(
-                    "flex w-full items-center gap-4 px-4 py-3 text-left transition",
-                    isWorkspace
-                      ? isActive
-                        ? "bg-[#1a1a1a]"
-                        : "hover:bg-[#0f0f0f]"
-                      : isActive
-                        ? "bg-emerald-50"
-                        : "hover:bg-zinc-50",
-                  )}
-                >
-                  <span
+                <div key={item.id}>
+                  {index === firstExternalPlaylistIndex ? (
+                    <div className="px-4 py-2" aria-hidden="true">
+                      <div className="flex items-center gap-3">
+                        <div className="h-px flex-1 bg-[#202020]" />
+                        <span className="text-[10px] font-medium uppercase tracking-[0.24em] text-zinc-500">
+                          More playlists
+                        </span>
+                        <div className="h-px flex-1 bg-[#202020]" />
+                      </div>
+                    </div>
+                  ) : null}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (!controlledActiveId) {
+                        setInternalActiveId(item.id);
+                      }
+                      onSelect?.(item);
+                    }}
                     className={clsx(
-                      "flex h-12 w-12 min-w-[3rem] overflow-hidden rounded-2xl border",
-                      isWorkspace ? "border-[#1f1f1f] bg-[#0a0a0a]" : "border-zinc-200 bg-zinc-50",
+                      "flex w-full items-center gap-4 px-4 py-3 text-left transition",
+                      isWorkspace
+                        ? isActive
+                          ? "bg-[#1a1a1a]"
+                          : "hover:bg-[#0f0f0f]"
+                        : isActive
+                          ? "bg-emerald-50"
+                          : "hover:bg-zinc-50",
                     )}
-                    style={
-                      item.artworkUrl
-                        ? undefined
-                        : badgeColor
-                          ? { backgroundColor: badgeColor }
-                          : undefined
-                    }
                   >
-                    {item.artworkUrl ? (
-                      // eslint-disable-next-line @next/next/no-img-element
-                      <img
-                        src={item.artworkUrl}
-                        alt=""
-                        className="block h-full w-full object-cover"
-                        loading="lazy"
-                      />
-                    ) : (
-                      <span className="flex h-full w-full items-center justify-center text-sm font-semibold text-white">
-                        {item.id === "liked-songs" ? "\u2665" : item.name.charAt(0).toUpperCase()}
-                      </span>
-                    )}
-                  </span>
-                  <span className="flex min-w-0 flex-1 flex-col gap-0.5">
                     <span
                       className={clsx(
-                        "truncate text-sm font-semibold",
-                        isWorkspace ? "text-zinc-100" : "text-zinc-800",
+                        "flex h-12 w-12 min-w-[3rem] overflow-hidden rounded-2xl border",
+                        isWorkspace
+                          ? "border-[#1f1f1f] bg-[#0a0a0a]"
+                          : "border-zinc-200 bg-zinc-50",
                       )}
+                      style={
+                        item.artworkUrl
+                          ? undefined
+                          : badgeColor
+                            ? { backgroundColor: badgeColor }
+                            : undefined
+                      }
                     >
-                      {item.name}
+                      {item.artworkUrl ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img
+                          src={item.artworkUrl}
+                          alt=""
+                          className="block h-full w-full object-cover"
+                          loading="lazy"
+                        />
+                      ) : (
+                        <span className="flex h-full w-full items-center justify-center text-sm font-semibold text-white">
+                          {item.id === "liked-songs" ? "\u2665" : item.name.charAt(0).toUpperCase()}
+                        </span>
+                      )}
                     </span>
-                    <span className="truncate text-xs text-zinc-500">{item.subtitle}</span>
-                  </span>
-                </button>
+                    <span className="flex min-w-0 flex-1 flex-col gap-0.5">
+                      <span
+                        className={clsx(
+                          "truncate text-sm font-semibold",
+                          isWorkspace ? "text-zinc-100" : "text-zinc-800",
+                        )}
+                      >
+                        {item.name}
+                      </span>
+                      <span className="truncate text-xs text-zinc-500">{item.subtitle}</span>
+                    </span>
+                  </button>
+                </div>
               );
             })}
           </ul>

@@ -126,10 +126,37 @@ export default function WorkspaceShell({
     setPlaylistRailState(playlistRailData);
   }, [playlistRailData]);
 
+  const sortedPlaylistRailState = useMemo(() => {
+    if (!playlistRailState) return null;
+
+    const collator = new Intl.Collator(undefined, {
+      sensitivity: "base",
+      numeric: true,
+    });
+
+    const playlists = [...playlistRailState.playlists].sort((a, b) => {
+      const aOwned = a.ownerId === spotifyUser?.spotifyId;
+      const bOwned = b.ownerId === spotifyUser?.spotifyId;
+
+      if (aOwned !== bOwned) {
+        return aOwned ? -1 : 1;
+      }
+
+      return collator.compare(a.name, b.name);
+    });
+
+    return {
+      ...playlistRailState,
+      playlists,
+    };
+  }, [playlistRailState, spotifyUser?.spotifyId]);
+
   const activeId = useMemo(() => {
     if (queueData?.source.type === "playlist") return queueData.source.id;
     return "liked-songs";
   }, [queueData]);
+
+  const activePlaylistSource = queueData?.source.type === "playlist" ? queueData.source : null;
 
   const redirectToLogin = useCallback(() => {
     window.location.assign("/api/auth/login");
@@ -230,7 +257,7 @@ export default function WorkspaceShell({
 
   const handleSelect = useCallback(
     async (item: { id: string; name: string; type: "liked" | "playlist" }) => {
-      if (!playlistRailState) return;
+      if (!sortedPlaylistRailState) return;
 
       const nextSource: QueueSource =
         item.type === "liked"
@@ -250,13 +277,13 @@ export default function WorkspaceShell({
         item.type === "liked"
           ? {
               title: "Liked Songs",
-              total: playlistRailState?.likedSongs?.total ?? 0,
-              artworkUrl: playlistRailState?.likedSongs?.artwork?.url ?? null,
+              total: sortedPlaylistRailState?.likedSongs?.total ?? 0,
+              artworkUrl: sortedPlaylistRailState?.likedSongs?.artwork?.url ?? null,
               sourceType: "liked" as const,
               canManage: false,
             }
           : (() => {
-              const found = playlistRailState?.playlists.find(p => p.id === item.id);
+              const found = sortedPlaylistRailState?.playlists.find(p => p.id === item.id);
               return {
                 title: item.name,
                 total: found?.totalTracks ?? 0,
@@ -280,7 +307,7 @@ export default function WorkspaceShell({
         setLoading(false);
       }
     },
-    [fetchSourceQueue, playlistRailState, spotifyUser?.spotifyId],
+    [fetchSourceQueue, sortedPlaylistRailState, spotifyUser?.spotifyId],
   );
 
   const handleLoadMore = useCallback(async () => {
@@ -570,13 +597,14 @@ export default function WorkspaceShell({
         <div className="self-start lg:h-full lg:min-h-0 lg:w-[300px]">
           <PlaylistRailClient
             data={
-              playlistRailState ?? {
+              sortedPlaylistRailState ?? {
                 likedSongs: { total: 0, artwork: null },
                 playlists: [],
               }
             }
             appearance="workspace"
             activeId={activeId}
+            currentSpotifyUserId={spotifyUser?.spotifyId ?? null}
             onSelect={item => handleSelect({ ...item, name: item.name })}
           />
         </div>
@@ -601,11 +629,11 @@ export default function WorkspaceShell({
             onRenamePlaylist={
               selectedMeta.sourceType === "playlist" &&
               selectedMeta.canManage &&
-              queueData?.source.type === "playlist"
+              activePlaylistSource
                 ? () =>
                     void handleRenamePlaylist({
                       type: "playlist",
-                      id: queueData.source.id,
+                      id: activePlaylistSource.id,
                       name: selectedMeta.title,
                       subtitle: `${selectedMeta.total} tracks`,
                       artworkUrl: selectedMeta.artworkUrl,
@@ -621,11 +649,11 @@ export default function WorkspaceShell({
             onDeletePlaylist={
               selectedMeta.sourceType === "playlist" &&
               selectedMeta.canManage &&
-              queueData?.source.type === "playlist"
+              activePlaylistSource
                 ? () =>
                     void handleDeletePlaylist({
                       type: "playlist",
-                      id: queueData.source.id,
+                      id: activePlaylistSource.id,
                       name: selectedMeta.title,
                       subtitle: `${selectedMeta.total} tracks`,
                       artworkUrl: selectedMeta.artworkUrl,
@@ -650,7 +678,7 @@ export default function WorkspaceShell({
         ) : mode === "review" ? (
           <ReviewStage
             key={reviewSessionKey}
-            playlistRailData={playlistRailState}
+            playlistRailData={sortedPlaylistRailState}
             queueData={loading ? null : queueData}
             loading={loading}
             error={queueError}

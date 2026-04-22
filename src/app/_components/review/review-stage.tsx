@@ -272,14 +272,37 @@ export default function ReviewStage({
   }, [ribbonMotionDirection]);
 
   const allPlaylists = useMemo(() => {
+    const collator = new Intl.Collator(undefined, {
+      sensitivity: "base",
+      numeric: true,
+    });
+
     const base =
       playlistRailData?.playlists.map(p => ({
         id: p.id,
         name: p.name,
         artworkUrl: p.images?.[0]?.url ?? null,
+        ownerId: p.ownerId,
       })) ?? [];
-    return [...localPlaylists, ...base];
-  }, [playlistRailData, localPlaylists]);
+    const combined = [
+      ...localPlaylists.map(playlist => ({
+        ...playlist,
+        ownerId: spotifyUser?.spotifyId ?? "__local__",
+      })),
+      ...base,
+    ];
+
+    return combined.sort((a, b) => {
+      const aOwned = a.ownerId === spotifyUser?.spotifyId;
+      const bOwned = b.ownerId === spotifyUser?.spotifyId;
+
+      if (aOwned !== bOwned) {
+        return aOwned ? -1 : 1;
+      }
+
+      return collator.compare(a.name, b.name);
+    });
+  }, [localPlaylists, playlistRailData, spotifyUser?.spotifyId]);
 
   const maxRibbonOffset = Math.max(0, allPlaylists.length - RIBBON_KEYS.length);
   const visiblePlaylists = allPlaylists.slice(ribbonOffset, ribbonOffset + RIBBON_KEYS.length);
