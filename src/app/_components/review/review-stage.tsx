@@ -112,6 +112,9 @@ const getPlaceholderColor = (id: string) => {
   return placeholderColors[hash % placeholderColors.length];
 };
 
+const formatActionLabel = (action: TrackAction) =>
+  action === "keep" ? "keep" : action === "remove" ? "remove" : "pending";
+
 export default function ReviewStage({
   playlistRailData,
   queueData,
@@ -133,6 +136,7 @@ export default function ReviewStage({
   const [isAddMode, setIsAddMode] = useState(false);
   const [newPlaylistModal, setNewPlaylistModal] = useState(false);
   const [newPlaylistName, setNewPlaylistName] = useState("");
+  const [reviewCompletePrompt, setReviewCompletePrompt] = useState(false);
   const [localPlaylists, setLocalPlaylists] = useState<
     { id: string; name: string; artworkUrl: string | null }[]
   >([]);
@@ -306,9 +310,64 @@ export default function ReviewStage({
   const currentTrack = trackStates[activeIndex] ?? null;
   const loadedTrackCount = trackStates.length;
   const totalTracks = queueData?.total ?? loadedTrackCount;
+  const isOnFinalTrack = Boolean(
+    currentTrack &&
+      queueData &&
+      queueData.nextOffset == null &&
+      activeIndex === loadedTrackCount - 1 &&
+      activeIndex === totalTracks - 1,
+  );
   const previewUrl = currentTrack?.previewUrl ?? null;
   const canUseFullPlayback = Boolean(currentTrack?.uri && playbackToken && deviceId);
   const playbackUnavailable = !previewUrl && !canUseFullPlayback;
+
+  const handleFinishReview = useCallback(() => {
+    if (!queueData) return;
+    const removed = trackStates
+      .filter(t => t.action === "remove")
+      .map(t => ({
+        id: t.id,
+        title: t.title,
+        artists: t.artists,
+        artworkUrl: t.artworkUrl,
+      }));
+    const kept = trackStates
+      .filter(t => t.action === "keep")
+      .map(t => ({
+        id: t.id,
+        title: t.title,
+        artists: t.artists,
+        artworkUrl: t.artworkUrl,
+      }));
+    const addedIds = Object.keys(addCounts);
+    const added = trackStates
+      .filter(t => addedIds.includes(t.id))
+      .map(t => ({
+        id: t.id,
+        title: t.title,
+        artists: t.artists,
+        artworkUrl: t.artworkUrl,
+        addCount: addCounts[t.id],
+      }));
+    const pendingCount = trackStates.filter(t => t.action === "pending").length;
+    onFinish?.({
+      sessionId: reviewSessionId,
+      playlistTitle: playlistMeta.title,
+      artworkUrl: playlistMeta.artworkUrl,
+      removed,
+      kept,
+      added,
+      pendingCount,
+    });
+  }, [
+    addCounts,
+    onFinish,
+    playlistMeta.artworkUrl,
+    playlistMeta.title,
+    queueData,
+    reviewSessionId,
+    trackStates,
+  ]);
 
   const findFirstPendingIndex = useCallback(
     (actionMap: Record<string, TrackAction>, tracks: QueueTrack[]) => {
@@ -923,6 +982,9 @@ export default function ReviewStage({
 
   const setAction = useCallback(
     (action: TrackAction) => {
+      const shouldPromptForFinish =
+        Boolean(currentTrack) && currentTrack.action !== action && isOnFinalTrack;
+
       setTrackStates(prev => {
         const next = [...prev];
         const current = next[activeIndex];
@@ -931,7 +993,7 @@ export default function ReviewStage({
           ...historyRef.current,
           { trackId: current.id, previousAction: current.action, previousIndex: activeIndex },
         ];
-        setLastActionLabel(`Set to ${action}`);
+        setLastActionLabel(`Set to ${formatActionLabel(action)} on ${current.title}`);
         next[activeIndex] = { ...current, action };
         return next;
       });
@@ -949,9 +1011,13 @@ export default function ReviewStage({
           console.error("Failed to persist track action:", err);
         });
       }
+      if (shouldPromptForFinish) {
+        setReviewCompletePrompt(true);
+        return;
+      }
       setActiveIndex(index => Math.min(loadedTrackCount - 1, index + 1));
     },
-    [activeIndex, currentTrack, loadedTrackCount, reviewSessionId, spotifyUser],
+    [activeIndex, currentTrack, isOnFinalTrack, loadedTrackCount, reviewSessionId, spotifyUser],
   );
 
   const undo = useCallback(() => {
@@ -967,13 +1033,15 @@ export default function ReviewStage({
       const next = [...prev];
       const idx = next.findIndex(t => t.id === last.trackId);
       if (idx !== -1) {
+        const undoneAction = next[idx].action;
+        const trackTitle = next[idx].title;
         next[idx] = { ...next[idx], action: last.previousAction };
+        setLastActionLabel(`Undid ${formatActionLabel(undoneAction)} on ${trackTitle}`);
       }
       setActiveIndex(last.previousIndex);
       return next;
     });
     historyRef.current = historyRef.current.slice(0, -1);
-    setLastActionLabel("Undid last action");
   }, [selectedPlaylists.size]);
 
   const togglePlaylistSelection = useCallback((id: string) => {
@@ -1083,15 +1151,13 @@ export default function ReviewStage({
       ];
 
       if (adds > 0 && duplicates > 0) {
-        setLastActionLabel(`Added to ${adds}, skipped ${duplicates} (already there)`);
-      } else if (adds > 0) {
         setLastActionLabel(
-          `Added to ${adds} playlist${adds > 1 ? "s" : ""}${
-            duplicates ? " (duplicates skipped)" : ""
-          }`,
+          `Added ${currentTrack.title} to ${adds} playlist${adds > 1 ? "s" : ""}, skipped ${duplicates}`,
         );
+      } else if (adds > 0) {
+        setLastActionLabel(`Added ${currentTrack.title} to ${adds} playlist${adds > 1 ? "s" : ""}`);
       } else {
-        setLastActionLabel("Skipped (already in selected playlists)");
+        setLastActionLabel(`${currentTrack.title} was already in the selected playlists`);
       }
 
       if (adds > 0) {
@@ -1571,45 +1637,7 @@ export default function ReviewStage({
       <div className="flex justify-end lg:flex-none">
         <button
           type="button"
-          onClick={() => {
-            if (!queueData) return;
-            const removed = trackStates
-              .filter(t => t.action === "remove")
-              .map(t => ({
-                id: t.id,
-                title: t.title,
-                artists: t.artists,
-                artworkUrl: t.artworkUrl,
-              }));
-            const kept = trackStates
-              .filter(t => t.action === "keep")
-              .map(t => ({
-                id: t.id,
-                title: t.title,
-                artists: t.artists,
-                artworkUrl: t.artworkUrl,
-              }));
-            const addedIds = Object.keys(addCounts);
-            const added = trackStates
-              .filter(t => addedIds.includes(t.id))
-              .map(t => ({
-                id: t.id,
-                title: t.title,
-                artists: t.artists,
-                artworkUrl: t.artworkUrl,
-                addCount: addCounts[t.id],
-              }));
-            const pendingCount = trackStates.filter(t => t.action === "pending").length;
-            onFinish?.({
-              sessionId: reviewSessionId,
-              playlistTitle: playlistMeta.title,
-              artworkUrl: playlistMeta.artworkUrl,
-              removed,
-              kept,
-              added,
-              pendingCount,
-            });
-          }}
+          onClick={handleFinishReview}
           className="rounded-full border border-emerald-500 bg-emerald-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-emerald-500"
         >
           Finish
@@ -1675,6 +1703,37 @@ export default function ReviewStage({
                 className="rounded-full border border-emerald-500 bg-emerald-600 px-3 py-1 font-semibold text-white hover:bg-emerald-500"
               >
                 Resume
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {reviewCompletePrompt ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4">
+          <div className="w-full max-w-md rounded-2xl border border-zinc-800 bg-[#0d0d0d] p-6 text-white shadow-xl">
+            <h3 className="text-lg font-semibold">Review complete?</h3>
+            <p className="mt-2 text-sm text-zinc-400">
+              You just reviewed the last track in this playlist. Are you ready to move to the
+              confirm page?
+            </p>
+            <div className="mt-5 flex flex-wrap justify-end gap-2 text-sm">
+              <button
+                type="button"
+                onClick={() => setReviewCompletePrompt(false)}
+                className="rounded-full border border-zinc-700 px-3 py-1 text-zinc-300 hover:border-emerald-500 hover:text-emerald-200"
+              >
+                Stay here
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setReviewCompletePrompt(false);
+                  handleFinishReview();
+                }}
+                className="rounded-full border border-emerald-500 bg-emerald-600 px-3 py-1 font-semibold text-white hover:bg-emerald-500"
+              >
+                Go to confirm
               </button>
             </div>
           </div>
