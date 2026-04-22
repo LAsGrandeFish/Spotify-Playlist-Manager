@@ -9,7 +9,7 @@ export type PlaylistSummary = {
   id: string;
   name: string;
   totalTracks: number;
-  images: SpotifyImage[];
+  images: SpotifyImage[] | null;
   ownerId: string;
   ownerName?: string | null;
   isCollaborative: boolean;

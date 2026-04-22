@@ -78,6 +78,12 @@ type HistoryEntry = {
   previousIndex: number;
 };
 
+type HistoryLabel = {
+  before: string;
+  trackName?: string;
+  after?: string;
+};
+
 export type SummaryTrack = {
   id: string;
   title: string;
@@ -115,6 +121,8 @@ const getPlaceholderColor = (id: string) => {
 const formatActionLabel = (action: TrackAction) =>
   action === "keep" ? "keep" : action === "remove" ? "remove" : "pending";
 
+const plainHistoryLabel = (before: string): HistoryLabel => ({ before });
+
 export default function ReviewStage({
   playlistRailData,
   queueData,
@@ -140,7 +148,9 @@ export default function ReviewStage({
   const [localPlaylists, setLocalPlaylists] = useState<
     { id: string; name: string; artworkUrl: string | null }[]
   >([]);
-  const [lastActionLabel, setLastActionLabel] = useState<string>("No actions yet.");
+  const [lastActionLabel, setLastActionLabel] = useState<HistoryLabel>(
+    plainHistoryLabel("No actions yet."),
+  );
   const [playlistTrackCache, setPlaylistTrackCache] = useState<Record<string, string[]>>({});
   const [addCounts, setAddCounts] = useState<Record<string, number>>({});
   const [railViewportWidth, setRailViewportWidth] = useState(0);
@@ -205,7 +215,7 @@ export default function ReviewStage({
       historyRef.current = [];
       setSelectedPlaylists(new Set());
       setIsAddMode(false);
-      setLastActionLabel("No actions yet.");
+      setLastActionLabel(plainHistoryLabel("No actions yet."));
       setPlaybackSource("none");
       setActiveTrackUri(null);
       setIsPlaying(false);
@@ -993,7 +1003,10 @@ export default function ReviewStage({
           ...historyRef.current,
           { trackId: current.id, previousAction: current.action, previousIndex: activeIndex },
         ];
-        setLastActionLabel(`Set to ${formatActionLabel(action)} on ${current.title}`);
+        setLastActionLabel({
+          before: `Set to ${formatActionLabel(action)} on `,
+          trackName: current.title,
+        });
         next[activeIndex] = { ...current, action };
         return next;
       });
@@ -1024,7 +1037,7 @@ export default function ReviewStage({
     if (selectedPlaylists.size > 0) {
       setSelectedPlaylists(new Set());
       setIsAddMode(false);
-      setLastActionLabel("Cleared selections");
+      setLastActionLabel(plainHistoryLabel("Cleared selections"));
       return;
     }
     const last = historyRef.current.at(-1);
@@ -1036,7 +1049,10 @@ export default function ReviewStage({
         const undoneAction = next[idx].action;
         const trackTitle = next[idx].title;
         next[idx] = { ...next[idx], action: last.previousAction };
-        setLastActionLabel(`Undid ${formatActionLabel(undoneAction)} on ${trackTitle}`);
+        setLastActionLabel({
+          before: `Undid ${formatActionLabel(undoneAction)} on `,
+          trackName: trackTitle,
+        });
       }
       setActiveIndex(last.previousIndex);
       return next;
@@ -1106,7 +1122,7 @@ export default function ReviewStage({
         return data.ids;
       } catch (err) {
         console.error("Failed to fetch playlist ids", err);
-        setLastActionLabel("Could not load playlist tracks for add check.");
+        setLastActionLabel(plainHistoryLabel("Could not load playlist tracks for add check."));
         return [];
       }
     },
@@ -1116,7 +1132,7 @@ export default function ReviewStage({
   const confirmAdd = useCallback(async () => {
     if (!isAddMode) {
       setIsAddMode(true);
-      setLastActionLabel("Add mode enabled");
+      setLastActionLabel(plainHistoryLabel("Add mode enabled"));
       return;
     }
     // Placeholder: record action to history (not persisted)
@@ -1151,13 +1167,23 @@ export default function ReviewStage({
       ];
 
       if (adds > 0 && duplicates > 0) {
-        setLastActionLabel(
-          `Added ${currentTrack.title} to ${adds} playlist${adds > 1 ? "s" : ""}, skipped ${duplicates}`,
-        );
+        setLastActionLabel({
+          before: "Added ",
+          trackName: currentTrack.title,
+          after: ` to ${adds} playlist${adds > 1 ? "s" : ""}, skipped ${duplicates}`,
+        });
       } else if (adds > 0) {
-        setLastActionLabel(`Added ${currentTrack.title} to ${adds} playlist${adds > 1 ? "s" : ""}`);
+        setLastActionLabel({
+          before: "Added ",
+          trackName: currentTrack.title,
+          after: ` to ${adds} playlist${adds > 1 ? "s" : ""}`,
+        });
       } else {
-        setLastActionLabel(`${currentTrack.title} was already in the selected playlists`);
+        setLastActionLabel({
+          before: "",
+          trackName: currentTrack.title,
+          after: " was already in the selected playlists",
+        });
       }
 
       if (adds > 0) {
@@ -1208,7 +1234,7 @@ export default function ReviewStage({
     setLocalPlaylists(prev => [{ id, name: newPlaylistName.trim(), artworkUrl: null }, ...prev]);
     setNewPlaylistName("");
     setNewPlaylistModal(false);
-    setLastActionLabel("Created new playlist");
+    setLastActionLabel(plainHistoryLabel("Created new playlist"));
   }, [newPlaylistName]);
 
   const shiftRibbon = useCallback(
@@ -1559,7 +1585,13 @@ export default function ReviewStage({
       <div className="space-y-2">
         <p className="text-xs uppercase tracking-[0.2em] text-zinc-500">Track History</p>
         <div className="h-px bg-zinc-800" />
-        <div className="min-h-[40px] text-xs text-zinc-400">{lastActionLabel}</div>
+        <div className="min-h-[40px] text-xs text-zinc-400">
+          {lastActionLabel.before}
+          {lastActionLabel.trackName ? (
+            <span className="font-semibold text-zinc-100">{lastActionLabel.trackName}</span>
+          ) : null}
+          {lastActionLabel.after ?? null}
+        </div>
       </div>
       <div className="mt-3.5 space-y-2">
         <p className="text-xs uppercase tracking-[0.2em] text-zinc-500">Track Actions</p>

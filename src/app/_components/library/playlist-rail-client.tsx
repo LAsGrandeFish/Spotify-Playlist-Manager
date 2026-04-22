@@ -78,7 +78,7 @@ export default function PlaylistRailClient({
       id: playlist.id,
       name: playlist.name,
       subtitle: `${playlist.totalTracks} tracks`,
-      artworkUrl: playlist.images[0]?.url ?? null,
+      artworkUrl: playlist.images?.[0]?.url ?? null,
       meta: {
         totalTracks: playlist.totalTracks,
         ownerId: playlist.ownerId,

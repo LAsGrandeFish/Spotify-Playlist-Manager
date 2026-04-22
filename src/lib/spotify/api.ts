@@ -31,7 +31,7 @@ export type SpotifyPlaylist = {
   id: string;
   name: string;
   description?: string | null;
-  images: SpotifyImage[];
+  images: SpotifyImage[] | null;
   tracks: {
     total: number;
   };
