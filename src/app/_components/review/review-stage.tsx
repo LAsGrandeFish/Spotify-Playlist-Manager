@@ -304,7 +304,8 @@ export default function ReviewStage({
   }, [railViewportWidth, ribbonScrollbarThumbWidth, ribbonTrackWidth, ribbonTranslate]);
 
   const currentTrack = trackStates[activeIndex] ?? null;
-  const totalTracks = trackStates.length;
+  const loadedTrackCount = trackStates.length;
+  const totalTracks = queueData?.total ?? loadedTrackCount;
   const previewUrl = currentTrack?.previewUrl ?? null;
   const canUseFullPlayback = Boolean(currentTrack?.uri && playbackToken && deviceId);
   const playbackUnavailable = !previewUrl && !canUseFullPlayback;
@@ -948,9 +949,9 @@ export default function ReviewStage({
           console.error("Failed to persist track action:", err);
         });
       }
-      setActiveIndex(index => Math.min(totalTracks - 1, index + 1));
+      setActiveIndex(index => Math.min(loadedTrackCount - 1, index + 1));
     },
-    [activeIndex, currentTrack, reviewSessionId, spotifyUser, totalTracks],
+    [activeIndex, currentTrack, loadedTrackCount, reviewSessionId, spotifyUser],
   );
 
   const undo = useCallback(() => {
