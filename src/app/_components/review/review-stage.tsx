@@ -1146,6 +1146,9 @@ export default function ReviewStage({
       if (playlistTrackCache[playlistId]) {
         return playlistTrackCache[playlistId];
       }
+      if (playlistId.startsWith("local-")) {
+        return [];
+      }
       try {
         const response = await fetch(`/api/playlists/${playlistId}/tracks`);
         if (!response.ok) {
@@ -1273,6 +1276,7 @@ export default function ReviewStage({
     if (!newPlaylistName.trim()) return;
     const id = `local-${Date.now()}`;
     setLocalPlaylists(prev => [{ id, name: newPlaylistName.trim(), artworkUrl: null }, ...prev]);
+    setPlaylistTrackCache(prev => ({ ...prev, [id]: [] }));
     setNewPlaylistName("");
     setNewPlaylistModal(false);
     setLastActionLabel(plainHistoryLabel("Created new playlist"));
