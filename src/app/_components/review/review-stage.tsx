@@ -1287,9 +1287,9 @@ export default function ReviewStage({
       setRibbonMotionDirection(direction);
       setRibbonOffset(offset => {
         if (direction === "left") {
-          return Math.max(0, offset - 1);
+          return Math.max(0, offset - RIBBON_KEYS.length);
         }
-        return Math.min(maxRibbonOffset, offset + 1);
+        return Math.min(maxRibbonOffset, offset + RIBBON_KEYS.length);
       });
     },
     [maxRibbonOffset],
