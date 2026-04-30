@@ -203,7 +203,32 @@ export default function WorkspaceShell({
         return;
       }
 
+      const refreshedPlaylistId =
+        refreshedQueue.source.type === "playlist" ? refreshedQueue.source.id : null;
+
       setQueueData(refreshedQueue);
+      setPlaylistRailState(prev => {
+        if (!prev) return prev;
+
+        if (refreshedPlaylistId) {
+          return {
+            ...prev,
+            playlists: prev.playlists.map(playlist =>
+              playlist.id === refreshedPlaylistId
+                ? { ...playlist, totalTracks: refreshedQueue.total }
+                : playlist,
+            ),
+          };
+        }
+
+        return {
+          ...prev,
+          likedSongs: {
+            ...prev.likedSongs,
+            total: refreshedQueue.total,
+          },
+        };
+      });
       setSelectedMeta(prev => ({
         ...prev,
         total: refreshedQueue.total,
@@ -546,6 +571,22 @@ export default function WorkspaceShell({
 
         setConfirmStage("Finalizing session");
         await reconcileCurrentSource(body.removed.applied);
+        if (summaryData.playlistAdditions.length > 0) {
+          const playlistAdditionMap = new Map(
+            summaryData.playlistAdditions.map(entry => [entry.playlistId, entry.count]),
+          );
+          setPlaylistRailState(prev =>
+            prev
+              ? {
+                  ...prev,
+                  playlists: prev.playlists.map(playlist => ({
+                    ...playlist,
+                    totalTracks: playlist.totalTracks + (playlistAdditionMap.get(playlist.id) ?? 0),
+                  })),
+                }
+              : prev,
+          );
+        }
         setConfirmStatus("success");
         setConfirmErrorMessage(null);
         setConfirmFailures([]);

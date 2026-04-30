@@ -100,6 +100,10 @@ export type ReviewSummaryData = {
   kept: SummaryTrack[];
   added: SummaryTrack[];
   pendingCount: number;
+  playlistAdditions: Array<{
+    playlistId: string;
+    count: number;
+  }>;
 };
 
 const placeholderColors = [
@@ -153,6 +157,7 @@ export default function ReviewStage({
   );
   const [playlistTrackCache, setPlaylistTrackCache] = useState<Record<string, string[]>>({});
   const [addCounts, setAddCounts] = useState<Record<string, number>>({});
+  const [playlistAddCounts, setPlaylistAddCounts] = useState<Record<string, number>>({});
   const [railViewportWidth, setRailViewportWidth] = useState(0);
   const [ribbonMotionDirection, setRibbonMotionDirection] = useState<"left" | "right" | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
@@ -221,6 +226,7 @@ export default function ReviewStage({
       setIsPlaying(false);
       setCurrentTime(0);
       setDuration(30);
+      setPlaylistAddCounts({});
       lastAutoPlayTrackIdRef.current = null;
       setReviewSessionId(null);
       persistedTrackIdsRef.current = new Set();
@@ -391,10 +397,15 @@ export default function ReviewStage({
       kept,
       added,
       pendingCount,
+      playlistAdditions: Object.entries(playlistAddCounts).map(([playlistId, count]) => ({
+        playlistId,
+        count,
+      })),
     });
   }, [
     addCounts,
     onFinish,
+    playlistAddCounts,
     playlistMeta.artworkUrl,
     playlistMeta.title,
     queueData,
@@ -1214,6 +1225,13 @@ export default function ReviewStage({
           ...prev,
           [currentTrack.id]: (prev[currentTrack.id] ?? 0) + adds,
         }));
+        setPlaylistAddCounts(prev => {
+          const next = { ...prev };
+          targetPayload.forEach(target => {
+            next[target.playlistId] = (next[target.playlistId] ?? 0) + 1;
+          });
+          return next;
+        });
         setPlaylistTrackCache(prev => {
           const next = { ...prev };
           targetPayload.forEach(target => {
