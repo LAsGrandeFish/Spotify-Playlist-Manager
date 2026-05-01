@@ -90,8 +90,14 @@ export default async function Home() {
         <div className="w-full rounded-[28px] border border-[#121212] bg-[#050505] p-2 text-white shadow-[0_30px_70px_rgba(0,0,0,0.45)] lg:flex lg:h-full lg:min-h-0 lg:flex-col lg:p-2.5">
           <header className="flex items-center justify-between rounded-[20px] border border-[#1f1f1f] bg-gradient-to-r from-[#151515] via-[#1a1a1a] to-[#121212] px-4 py-1.5 lg:flex-none">
             <div className="flex items-center gap-[16px]">
-              <span className="flex h-10 w-10 items-center justify-center rounded-2xl bg-emerald-500 text-lg font-semibold text-black">
-                ♫
+              <span className="relative flex h-10 w-10 items-center justify-center overflow-hidden rounded-2xl">
+                <Image
+                  src="/spotify_icon_transparent.png"
+                  alt="Spotify Playlist Manager icon"
+                  fill
+                  className="object-contain"
+                  priority
+                />
               </span>
               <div>
                 <p className="text-xs uppercase tracking-[0.24em] text-emerald-300/85">Spotify</p>
@@ -156,8 +162,14 @@ export default async function Home() {
         <div className="relative grid gap-12 px-6 py-8 sm:px-8 sm:py-10 lg:grid-cols-[minmax(0,1.2fr)_minmax(320px,0.8fr)] lg:items-end lg:px-12 lg:py-12">
           <div className="flex flex-col gap-8">
             <div className="flex items-center gap-4">
-              <span className="flex h-14 w-14 items-center justify-center rounded-[20px] bg-emerald-500 text-2xl font-semibold text-black shadow-[0_18px_45px_rgba(29,185,84,0.28)]">
-                ♫
+              <span className="relative flex h-14 w-14 items-center justify-center overflow-hidden rounded-[20px]">
+                <Image
+                  src="/spotify_icon_transparent.png"
+                  alt="Spotify Playlist Manager icon"
+                  fill
+                  className="object-contain"
+                  priority
+                />
               </span>
               <div>
                 <p className="text-xs font-medium uppercase tracking-[0.34em] text-emerald-300/90">
