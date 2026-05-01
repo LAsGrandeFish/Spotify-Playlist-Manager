@@ -182,9 +182,6 @@ export default async function Home() {
             </div>
 
             <div className="space-y-5">
-              <span className="inline-flex w-fit items-center rounded-full border border-emerald-400/20 bg-emerald-400/10 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.24em] text-emerald-200">
-                Fast playlist triage
-              </span>
               <h1 className="max-w-4xl text-4xl font-semibold tracking-[-0.05em] text-white sm:text-5xl lg:text-6xl">
                 Spotify Playlist Manager
               </h1>
@@ -217,8 +214,8 @@ export default async function Home() {
           </div>
 
           <div className="rounded-[28px] border border-white/10 bg-[linear-gradient(180deg,rgba(255,255,255,0.08),rgba(255,255,255,0.03))] p-6 shadow-[0_24px_60px_rgba(0,0,0,0.35)] backdrop-blur-xl sm:p-7">
-            <div className="flex flex-col gap-6">
-              <div className="space-y-2">
+            <div className="flex flex-col gap-7">
+              <div className="space-y-3">
                 <p className="text-xs font-semibold uppercase tracking-[0.28em] text-zinc-400">
                   Connect Spotify
                 </p>
@@ -231,23 +228,23 @@ export default async function Home() {
                 </p>
               </div>
 
-              <div className="rounded-2xl border border-white/8 bg-black/20 px-4 py-4 text-sm text-zinc-300">
-                <p className="font-medium text-zinc-100">Session handling stays lightweight.</p>
-                <p className="mt-1 text-xs leading-5 text-zinc-400">
-                  Tokens are stored in http-only cookies and refreshed automatically before they
-                  expire.
-                </p>
+              <div className="space-y-3">
                 {authState.error ? (
-                  <p className="mt-3 text-xs font-medium text-amber-300">{authState.error}</p>
-                ) : null}
+                  <p className="rounded-2xl border border-amber-400/20 bg-amber-400/10 px-4 py-3 text-xs font-medium text-amber-200">
+                    {authState.error}
+                  </p>
+                ) : (
+                  <p className="text-xs uppercase tracking-[0.24em] text-zinc-500">
+                    Ready when you are
+                  </p>
+                )}
+                <Link
+                  href="/api/auth/login"
+                  className="inline-flex w-full items-center justify-center rounded-full bg-emerald-500 px-5 py-3.5 text-sm font-semibold text-black transition hover:bg-emerald-400"
+                >
+                  Log in with Spotify
+                </Link>
               </div>
-
-              <Link
-                href="/api/auth/login"
-                className="inline-flex items-center justify-center rounded-full bg-emerald-500 px-5 py-3 text-sm font-semibold text-black transition hover:bg-emerald-400"
-              >
-                Log in with Spotify
-              </Link>
             </div>
           </div>
         </div>
