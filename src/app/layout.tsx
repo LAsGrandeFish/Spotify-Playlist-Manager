@@ -16,6 +16,11 @@ export const metadata: Metadata = {
   title: "Spotify Playlist Manager",
   description:
     "Keyboard-centric playlist triage tool for power users with large Spotify libraries.",
+  icons: {
+    icon: "/spotify_icon_transparent.png",
+    shortcut: "/spotify_icon_transparent.png",
+    apple: "/spotify_icon_transparent.png",
+  },
 };
 
 export default function RootLayout({

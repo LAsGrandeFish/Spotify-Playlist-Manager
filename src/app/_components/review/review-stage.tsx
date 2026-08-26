@@ -8,6 +8,8 @@ import type { PlaylistRailData } from "@/lib/spotify/library";
 import type { QueueData, QueueTrack } from "@/lib/spotify/queue";
 
 const PLAYER_NAME = "Spotify Playlist Manager";
+const RIBBON_CARD_GAP_PX = 12;
+const RIBBON_PEEK_PX = 34;
 
 type SpotifyPlayerState = {
   paused: boolean;
@@ -23,8 +25,8 @@ type SpotifyPlayerState = {
 type SpotifyPlayer = {
   connect: () => Promise<boolean>;
   disconnect: () => void;
-  addListener: (event: string, cb: (payload: unknown) => void) => void;
-  removeListener: (event: string, cb?: (payload: unknown) => void) => void;
+  addListener: <TPayload = unknown>(event: string, cb: (payload: TPayload) => void) => void;
+  removeListener: <TPayload = unknown>(event: string, cb?: (payload: TPayload) => void) => void;
   togglePlay: () => Promise<void>;
   pause: () => Promise<void>;
 };
@@ -76,6 +78,12 @@ type HistoryEntry = {
   previousIndex: number;
 };
 
+type HistoryLabel = {
+  before: string;
+  trackName?: string;
+  after?: string;
+};
+
 export type SummaryTrack = {
   id: string;
   title: string;
@@ -92,20 +100,32 @@ export type ReviewSummaryData = {
   kept: SummaryTrack[];
   added: SummaryTrack[];
   pendingCount: number;
+  playlistAdditions: Array<{
+    playlistId: string;
+    count: number;
+  }>;
 };
 
-const gradients = [
-  "from-emerald-500 to-teal-400",
-  "from-rose-500 to-purple-500",
-  "from-blue-500 to-cyan-400",
-  "from-amber-500 to-orange-500",
-  "from-indigo-500 to-violet-500",
-  "from-fuchsia-500 to-pink-500",
-  "from-green-500 to-lime-400",
-  "from-sky-500 to-blue-700",
+const placeholderColors = [
+  "#34d399",
+  "#fb7185",
+  "#60a5fa",
+  "#f59e0b",
+  "#818cf8",
+  "#f472b6",
+  "#22c55e",
+  "#38bdf8",
 ];
 
-const randomGradient = () => gradients[Math.floor(Math.random() * gradients.length)];
+const getPlaceholderColor = (id: string) => {
+  const hash = id.split("").reduce((acc, char) => acc + char.charCodeAt(0), 0);
+  return placeholderColors[hash % placeholderColors.length];
+};
+
+const formatActionLabel = (action: TrackAction) =>
+  action === "keep" ? "keep" : action === "remove" ? "remove" : "pending";
+
+const plainHistoryLabel = (before: string): HistoryLabel => ({ before });
 
 export default function ReviewStage({
   playlistRailData,
@@ -128,14 +148,22 @@ export default function ReviewStage({
   const [isAddMode, setIsAddMode] = useState(false);
   const [newPlaylistModal, setNewPlaylistModal] = useState(false);
   const [newPlaylistName, setNewPlaylistName] = useState("");
+  const [reviewCompletePrompt, setReviewCompletePrompt] = useState(false);
   const [localPlaylists, setLocalPlaylists] = useState<
     { id: string; name: string; artworkUrl: string | null }[]
   >([]);
-  const [lastActionLabel, setLastActionLabel] = useState<string>("No actions yet.");
+  const [lastActionLabel, setLastActionLabel] = useState<HistoryLabel>(
+    plainHistoryLabel("No actions yet."),
+  );
   const [playlistTrackCache, setPlaylistTrackCache] = useState<Record<string, string[]>>({});
   const [addCounts, setAddCounts] = useState<Record<string, number>>({});
+  const [playlistAddCounts, setPlaylistAddCounts] = useState<Record<string, number>>({});
+  const [railViewportWidth, setRailViewportWidth] = useState(0);
+  const [ribbonMotionDirection, setRibbonMotionDirection] = useState<"left" | "right" | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const playerRef = useRef<SpotifyPlayer | null>(null);
+  const railViewportRef = useRef<HTMLDivElement | null>(null);
+  const ribbonMotionTimeoutRef = useRef<number | null>(null);
   const playbackSourceRef = useRef<"none" | "preview" | "full">("none");
   const [playbackToken, setPlaybackToken] = useState<string | null>(null);
   const [playbackTokenError, setPlaybackTokenError] = useState<string | null>(null);
@@ -192,12 +220,13 @@ export default function ReviewStage({
       historyRef.current = [];
       setSelectedPlaylists(new Set());
       setIsAddMode(false);
-      setLastActionLabel("No actions yet.");
+      setLastActionLabel(plainHistoryLabel("No actions yet."));
       setPlaybackSource("none");
       setActiveTrackUri(null);
       setIsPlaying(false);
       setCurrentTime(0);
       setDuration(30);
+      setPlaylistAddCounts({});
       lastAutoPlayTrackIdRef.current = null;
       setReviewSessionId(null);
       persistedTrackIdsRef.current = new Set();
@@ -216,23 +245,173 @@ export default function ReviewStage({
     isSeekingRef.current = isSeeking;
   }, [isSeeking]);
 
+  useEffect(() => {
+    const viewport = railViewportRef.current;
+    if (!viewport) return;
+
+    const updateWidth = () => {
+      setRailViewportWidth(viewport.getBoundingClientRect().width);
+    };
+
+    updateWidth();
+
+    const observer = new ResizeObserver(() => updateWidth());
+    observer.observe(viewport);
+    return () => observer.disconnect();
+  }, []);
+
+  useEffect(() => {
+    if (!ribbonMotionDirection) return;
+    if (ribbonMotionTimeoutRef.current) {
+      window.clearTimeout(ribbonMotionTimeoutRef.current);
+    }
+    ribbonMotionTimeoutRef.current = window.setTimeout(() => {
+      setRibbonMotionDirection(null);
+      ribbonMotionTimeoutRef.current = null;
+    }, 220);
+    return () => {
+      if (ribbonMotionTimeoutRef.current) {
+        window.clearTimeout(ribbonMotionTimeoutRef.current);
+        ribbonMotionTimeoutRef.current = null;
+      }
+    };
+  }, [ribbonMotionDirection]);
+
   const allPlaylists = useMemo(() => {
+    const collator = new Intl.Collator(undefined, {
+      sensitivity: "base",
+      numeric: true,
+    });
+
     const base =
       playlistRailData?.playlists.map(p => ({
         id: p.id,
         name: p.name,
         artworkUrl: p.images?.[0]?.url ?? null,
+        ownerId: p.ownerId,
       })) ?? [];
-    return [...localPlaylists, ...base];
-  }, [playlistRailData, localPlaylists]);
+    const combined = [
+      ...localPlaylists.map(playlist => ({
+        ...playlist,
+        ownerId: spotifyUser?.spotifyId ?? "__local__",
+      })),
+      ...base,
+    ];
 
+    return combined.sort((a, b) => {
+      const aOwned = a.ownerId === spotifyUser?.spotifyId;
+      const bOwned = b.ownerId === spotifyUser?.spotifyId;
+
+      if (aOwned !== bOwned) {
+        return aOwned ? -1 : 1;
+      }
+
+      return collator.compare(a.name, b.name);
+    });
+  }, [localPlaylists, playlistRailData, spotifyUser?.spotifyId]);
+
+  const maxRibbonOffset = Math.max(0, allPlaylists.length - RIBBON_KEYS.length);
   const visiblePlaylists = allPlaylists.slice(ribbonOffset, ribbonOffset + RIBBON_KEYS.length);
+  const ribbonCardWidth = useMemo(() => {
+    if (!railViewportWidth) return 112;
+    return Math.max(
+      96,
+      (railViewportWidth - RIBBON_CARD_GAP_PX * (RIBBON_KEYS.length - 1) - RIBBON_PEEK_PX * 2) /
+        RIBBON_KEYS.length,
+    );
+  }, [railViewportWidth]);
+  const ribbonStep = ribbonCardWidth + RIBBON_CARD_GAP_PX;
+  const ribbonTrackWidth = useMemo(() => {
+    if (!allPlaylists.length) return 0;
+    return allPlaylists.length * ribbonCardWidth + (allPlaylists.length - 1) * RIBBON_CARD_GAP_PX;
+  }, [allPlaylists.length, ribbonCardWidth]);
+  const ribbonTranslate = useMemo(() => {
+    if (!railViewportWidth || !allPlaylists.length) return 0;
+    const maxTranslate = Math.max(0, ribbonTrackWidth - railViewportWidth);
+    const desiredTranslate = Math.max(0, ribbonOffset * ribbonStep - RIBBON_PEEK_PX);
+    return Math.min(desiredTranslate, maxTranslate);
+  }, [allPlaylists.length, railViewportWidth, ribbonOffset, ribbonStep, ribbonTrackWidth]);
+  const canScrollRibbonLeft = ribbonOffset > 0;
+  const canScrollRibbonRight = ribbonOffset < maxRibbonOffset;
+  const ribbonScrollbarThumbWidth = useMemo(() => {
+    if (!railViewportWidth || !ribbonTrackWidth) return 0;
+    const ratio = railViewportWidth / ribbonTrackWidth;
+    return Math.max(40, railViewportWidth * Math.min(1, ratio));
+  }, [railViewportWidth, ribbonTrackWidth]);
+  const ribbonScrollbarThumbOffset = useMemo(() => {
+    if (!railViewportWidth || !ribbonTrackWidth || !ribbonScrollbarThumbWidth) return 0;
+    const maxTranslate = Math.max(0, ribbonTrackWidth - railViewportWidth);
+    const maxThumbOffset = Math.max(0, railViewportWidth - ribbonScrollbarThumbWidth);
+    if (!maxTranslate || !maxThumbOffset) return 0;
+    return (ribbonTranslate / maxTranslate) * maxThumbOffset;
+  }, [railViewportWidth, ribbonScrollbarThumbWidth, ribbonTrackWidth, ribbonTranslate]);
 
   const currentTrack = trackStates[activeIndex] ?? null;
-  const totalTracks = trackStates.length;
+  const loadedTrackCount = trackStates.length;
+  const totalTracks = queueData?.total ?? loadedTrackCount;
+  const isOnFinalTrack = Boolean(
+    currentTrack &&
+      queueData &&
+      queueData.nextOffset == null &&
+      activeIndex === loadedTrackCount - 1 &&
+      activeIndex === totalTracks - 1,
+  );
   const previewUrl = currentTrack?.previewUrl ?? null;
   const canUseFullPlayback = Boolean(currentTrack?.uri && playbackToken && deviceId);
   const playbackUnavailable = !previewUrl && !canUseFullPlayback;
+
+  const handleFinishReview = useCallback(() => {
+    if (!queueData) return;
+    const removed = trackStates
+      .filter(t => t.action === "remove")
+      .map(t => ({
+        id: t.id,
+        title: t.title,
+        artists: t.artists,
+        artworkUrl: t.artworkUrl,
+      }));
+    const kept = trackStates
+      .filter(t => t.action === "keep")
+      .map(t => ({
+        id: t.id,
+        title: t.title,
+        artists: t.artists,
+        artworkUrl: t.artworkUrl,
+      }));
+    const addedIds = Object.keys(addCounts);
+    const added = trackStates
+      .filter(t => addedIds.includes(t.id))
+      .map(t => ({
+        id: t.id,
+        title: t.title,
+        artists: t.artists,
+        artworkUrl: t.artworkUrl,
+        addCount: addCounts[t.id],
+      }));
+    const pendingCount = trackStates.filter(t => t.action === "pending").length;
+    onFinish?.({
+      sessionId: reviewSessionId,
+      playlistTitle: playlistMeta.title,
+      artworkUrl: playlistMeta.artworkUrl,
+      removed,
+      kept,
+      added,
+      pendingCount,
+      playlistAdditions: Object.entries(playlistAddCounts).map(([playlistId, count]) => ({
+        playlistId,
+        count,
+      })),
+    });
+  }, [
+    addCounts,
+    onFinish,
+    playlistAddCounts,
+    playlistMeta.artworkUrl,
+    playlistMeta.title,
+    queueData,
+    reviewSessionId,
+    trackStates,
+  ]);
 
   const findFirstPendingIndex = useCallback(
     (actionMap: Record<string, TrackAction>, tracks: QueueTrack[]) => {
@@ -555,28 +734,6 @@ export default function ReviewStage({
     };
   }, [playbackToken, sdkReady]);
 
-  useEffect(() => {
-    if (!deviceId || !playbackToken) return;
-    const transferPlayback = async () => {
-      try {
-        await fetch("https://api.spotify.com/v1/me/player", {
-          method: "PUT",
-          headers: {
-            Authorization: `Bearer ${playbackToken}`,
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            device_ids: [deviceId],
-            play: false,
-          }),
-        });
-      } catch (err) {
-        console.error("Failed to transfer playback:", err);
-      }
-    };
-    transferPlayback();
-  }, [deviceId, playbackToken]);
-
   const fetchPlaybackDeviceId = useCallback(async () => {
     if (!playbackToken) return null;
     try {
@@ -621,11 +778,6 @@ export default function ReviewStage({
   }, [previewUrl]);
 
   useEffect(() => {
-    if (!playerRef.current) return;
-    playerRef.current.pause().catch(() => undefined);
-  }, [currentTrack?.id]);
-
-  useEffect(() => {
     const audio = audioRef.current;
     if (!audio) return;
 
@@ -654,26 +806,37 @@ export default function ReviewStage({
     };
   }, []);
 
+  const startPreviewPlayback = useCallback(async () => {
+    const audio = audioRef.current;
+    if (!audio || !previewUrl) return false;
+    setPlaybackTokenError(null);
+    setPlaybackSource("preview");
+    try {
+      await audio.play();
+      setIsPlaying(true);
+      return true;
+    } catch {
+      setIsPlaying(false);
+      return false;
+    }
+  }, [previewUrl]);
+
   const startFullPlayback = useCallback(
     async (uri: string) => {
-      if (!playbackToken) return;
+      if (!playbackToken) return false;
       let targetDeviceId = deviceId;
       if (!targetDeviceId) {
         targetDeviceId = await fetchPlaybackDeviceId();
       }
       if (!targetDeviceId) {
         setPlaybackTokenError("Playback device unavailable. Try restarting the player.");
-        return;
+        return false;
       }
       try {
         const audio = audioRef.current;
         if (audio) {
           audio.pause();
           audio.currentTime = 0;
-        }
-        if (activeTrackUri && activeTrackUri === uri && playerRef.current) {
-          await playerRef.current.togglePlay();
-          return;
         }
         const transferResponse = await fetch("https://api.spotify.com/v1/me/player", {
           method: "PUT",
@@ -695,11 +858,11 @@ export default function ReviewStage({
               targetDeviceId = refreshedDeviceId;
             } else {
               setPlaybackTokenError(`Playback device error: ${errorText}`);
-              return;
+              return false;
             }
           } else {
             setPlaybackTokenError(`Playback device error: ${errorText}`);
-            return;
+            return false;
           }
         }
 
@@ -718,56 +881,86 @@ export default function ReviewStage({
         if (!playResponse.ok) {
           const errorText = await playResponse.text();
           setPlaybackTokenError(`Playback failed: ${errorText}`);
-          return;
+          return false;
         }
+        setPlaybackTokenError(null);
         setPlaybackSource("full");
         setActiveTrackUri(uri);
         setIsPlaying(true);
+        return true;
       } catch (err) {
         console.error("Failed to start full playback:", err);
+        return false;
       }
     },
-    [activeTrackUri, deviceId, fetchPlaybackDeviceId, playbackToken],
+    [deviceId, fetchPlaybackDeviceId, playbackToken],
   );
 
   useEffect(() => {
     if (!currentTrack) return;
-    if (currentTrack.uri && !canUseFullPlayback) return;
     if (lastAutoPlayTrackIdRef.current === currentTrack.id) return;
-    if (canUseFullPlayback && currentTrack.uri) {
-      startFullPlayback(currentTrack.uri);
+    let cancelled = false;
+
+    const autoPlay = async () => {
+      if (currentTrack.uri && playbackToken) {
+        const startedFullPlayback = await startFullPlayback(currentTrack.uri);
+        if (cancelled) return;
+        if (startedFullPlayback) {
+          lastAutoPlayTrackIdRef.current = currentTrack.id;
+          return;
+        }
+      }
+
+      if (!previewUrl) return;
+      const startedPreviewPlayback = await startPreviewPlayback();
+      if (cancelled || !startedPreviewPlayback) return;
       lastAutoPlayTrackIdRef.current = currentTrack.id;
-      return;
-    }
-    if (!previewUrl) return;
-    const audio = audioRef.current;
-    if (!audio) return;
-    setPlaybackSource("preview");
-    audio
-      .play()
-      .then(() => setIsPlaying(true))
-      .catch(() => setIsPlaying(false));
-    lastAutoPlayTrackIdRef.current = currentTrack.id;
-  }, [canUseFullPlayback, currentTrack, previewUrl, startFullPlayback]);
+    };
+
+    void autoPlay();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [currentTrack, playbackToken, previewUrl, startFullPlayback, startPreviewPlayback]);
 
   const togglePlayback = useCallback(async () => {
-    if (canUseFullPlayback && currentTrack?.uri) {
-      await startFullPlayback(currentTrack.uri);
-      return;
+    if (currentTrack?.uri && playbackToken) {
+      if (
+        playbackSourceRef.current === "full" &&
+        activeTrackUri === currentTrack.uri &&
+        playerRef.current
+      ) {
+        await playerRef.current.togglePlay();
+        return;
+      }
+      const startedFullPlayback = await startFullPlayback(currentTrack.uri);
+      if (startedFullPlayback) {
+        return;
+      }
     }
+
     const audio = audioRef.current;
     if (!audio || !previewUrl) return;
-    setPlaybackSource("preview");
+    if (playbackSourceRef.current !== "preview") {
+      await startPreviewPlayback();
+      return;
+    }
     if (audio.paused) {
-      audio
-        .play()
-        .then(() => setIsPlaying(true))
-        .catch(() => setIsPlaying(false));
+      await startPreviewPlayback();
     } else {
       audio.pause();
+      setPlaybackSource("preview");
       setIsPlaying(false);
     }
-  }, [canUseFullPlayback, currentTrack?.uri, previewUrl, startFullPlayback]);
+  }, [
+    activeTrackUri,
+    currentTrack?.uri,
+    playbackToken,
+    previewUrl,
+    startFullPlayback,
+    startPreviewPlayback,
+  ]);
 
   const restartPlayback = useCallback(async () => {
     if (canUseFullPlayback && playbackToken && deviceId) {
@@ -833,6 +1026,9 @@ export default function ReviewStage({
 
   const setAction = useCallback(
     (action: TrackAction) => {
+      const shouldPromptForFinish =
+        Boolean(currentTrack) && currentTrack.action !== action && isOnFinalTrack;
+
       setTrackStates(prev => {
         const next = [...prev];
         const current = next[activeIndex];
@@ -841,7 +1037,10 @@ export default function ReviewStage({
           ...historyRef.current,
           { trackId: current.id, previousAction: current.action, previousIndex: activeIndex },
         ];
-        setLastActionLabel(`Set to ${action}`);
+        setLastActionLabel({
+          before: `Set to ${formatActionLabel(action)} on `,
+          trackName: current.title,
+        });
         next[activeIndex] = { ...current, action };
         return next;
       });
@@ -859,16 +1058,20 @@ export default function ReviewStage({
           console.error("Failed to persist track action:", err);
         });
       }
-      setActiveIndex(index => Math.min(totalTracks - 1, index + 1));
+      if (shouldPromptForFinish) {
+        setReviewCompletePrompt(true);
+        return;
+      }
+      setActiveIndex(index => Math.min(loadedTrackCount - 1, index + 1));
     },
-    [activeIndex, currentTrack, reviewSessionId, spotifyUser, totalTracks],
+    [activeIndex, currentTrack, isOnFinalTrack, loadedTrackCount, reviewSessionId, spotifyUser],
   );
 
   const undo = useCallback(() => {
     if (selectedPlaylists.size > 0) {
       setSelectedPlaylists(new Set());
       setIsAddMode(false);
-      setLastActionLabel("Cleared selections");
+      setLastActionLabel(plainHistoryLabel("Cleared selections"));
       return;
     }
     const last = historyRef.current.at(-1);
@@ -877,13 +1080,18 @@ export default function ReviewStage({
       const next = [...prev];
       const idx = next.findIndex(t => t.id === last.trackId);
       if (idx !== -1) {
+        const undoneAction = next[idx].action;
+        const trackTitle = next[idx].title;
         next[idx] = { ...next[idx], action: last.previousAction };
+        setLastActionLabel({
+          before: `Undid ${formatActionLabel(undoneAction)} on `,
+          trackName: trackTitle,
+        });
       }
       setActiveIndex(last.previousIndex);
       return next;
     });
     historyRef.current = historyRef.current.slice(0, -1);
-    setLastActionLabel("Undid last action");
   }, [selectedPlaylists.size]);
 
   const togglePlaylistSelection = useCallback((id: string) => {
@@ -938,6 +1146,9 @@ export default function ReviewStage({
       if (playlistTrackCache[playlistId]) {
         return playlistTrackCache[playlistId];
       }
+      if (playlistId.startsWith("local-")) {
+        return [];
+      }
       try {
         const response = await fetch(`/api/playlists/${playlistId}/tracks`);
         if (!response.ok) {
@@ -948,7 +1159,7 @@ export default function ReviewStage({
         return data.ids;
       } catch (err) {
         console.error("Failed to fetch playlist ids", err);
-        setLastActionLabel("Could not load playlist tracks for add check.");
+        setLastActionLabel(plainHistoryLabel("Could not load playlist tracks for add check."));
         return [];
       }
     },
@@ -958,20 +1169,12 @@ export default function ReviewStage({
   const confirmAdd = useCallback(async () => {
     if (!isAddMode) {
       setIsAddMode(true);
-      setLastActionLabel("Add mode enabled");
+      setLastActionLabel(plainHistoryLabel("Add mode enabled"));
       return;
     }
     // Placeholder: record action to history (not persisted)
     if (selectedPlaylists.size > 0 && currentTrack) {
       const targets = Array.from(selectedPlaylists);
-      const targetPayload = targets
-        .map(targetId => {
-          const match = allPlaylists.find(playlist => playlist.id === targetId);
-          return match
-            ? { playlistId: match.id, playlistName: match.name }
-            : { playlistId: targetId, playlistName: null };
-        })
-        .filter(Boolean);
       const membershipResults = await Promise.all(
         targets.map(async playlistId => {
           const ids = await fetchPlaylistTrackIds(playlistId);
@@ -979,6 +1182,14 @@ export default function ReviewStage({
           return { playlistId, has };
         }),
       );
+      const targetPayload = membershipResults
+        .filter(result => !result.has)
+        .map(result => {
+          const match = allPlaylists.find(playlist => playlist.id === result.playlistId);
+          return match
+            ? { playlistId: match.id, playlistName: match.name }
+            : { playlistId: result.playlistId, playlistName: null };
+        });
 
       const duplicates = membershipResults.filter(r => r.has).length;
       const adds = membershipResults.length - duplicates;
@@ -993,15 +1204,23 @@ export default function ReviewStage({
       ];
 
       if (adds > 0 && duplicates > 0) {
-        setLastActionLabel(`Added to ${adds}, skipped ${duplicates} (already there)`);
+        setLastActionLabel({
+          before: "Added ",
+          trackName: currentTrack.title,
+          after: ` to ${adds} playlist${adds > 1 ? "s" : ""}, skipped ${duplicates}`,
+        });
       } else if (adds > 0) {
-        setLastActionLabel(
-          `Added to ${adds} playlist${adds > 1 ? "s" : ""}${
-            duplicates ? " (duplicates skipped)" : ""
-          }`,
-        );
+        setLastActionLabel({
+          before: "Added ",
+          trackName: currentTrack.title,
+          after: ` to ${adds} playlist${adds > 1 ? "s" : ""}`,
+        });
       } else {
-        setLastActionLabel("Skipped (already in selected playlists)");
+        setLastActionLabel({
+          before: "",
+          trackName: currentTrack.title,
+          after: " was already in the selected playlists",
+        });
       }
 
       if (adds > 0) {
@@ -1009,6 +1228,23 @@ export default function ReviewStage({
           ...prev,
           [currentTrack.id]: (prev[currentTrack.id] ?? 0) + adds,
         }));
+        setPlaylistAddCounts(prev => {
+          const next = { ...prev };
+          targetPayload.forEach(target => {
+            next[target.playlistId] = (next[target.playlistId] ?? 0) + 1;
+          });
+          return next;
+        });
+        setPlaylistTrackCache(prev => {
+          const next = { ...prev };
+          targetPayload.forEach(target => {
+            const existing = next[target.playlistId] ?? [];
+            next[target.playlistId] = existing.includes(currentTrack.id)
+              ? existing
+              : [...existing, currentTrack.id];
+          });
+          return next;
+        });
       }
       if (reviewSessionId && targetPayload.length > 0 && spotifyUser) {
         fetch(`/api/review/sessions/${reviewSessionId}/tracks/${currentTrack.id}/targets`, {
@@ -1040,10 +1276,24 @@ export default function ReviewStage({
     if (!newPlaylistName.trim()) return;
     const id = `local-${Date.now()}`;
     setLocalPlaylists(prev => [{ id, name: newPlaylistName.trim(), artworkUrl: null }, ...prev]);
+    setPlaylistTrackCache(prev => ({ ...prev, [id]: [] }));
     setNewPlaylistName("");
     setNewPlaylistModal(false);
-    setLastActionLabel("Created new playlist");
+    setLastActionLabel(plainHistoryLabel("Created new playlist"));
   }, [newPlaylistName]);
+
+  const shiftRibbon = useCallback(
+    (direction: "left" | "right") => {
+      setRibbonMotionDirection(direction);
+      setRibbonOffset(offset => {
+        if (direction === "left") {
+          return Math.max(0, offset - RIBBON_KEYS.length);
+        }
+        return Math.min(maxRibbonOffset, offset + RIBBON_KEYS.length);
+      });
+    },
+    [maxRibbonOffset],
+  );
 
   useEffect(() => {
     const handleKey = (event: KeyboardEvent) => {
@@ -1051,15 +1301,12 @@ export default function ReviewStage({
       const key = event.key.toUpperCase();
       if (key === "A") {
         event.preventDefault();
-        setRibbonOffset(offset => Math.max(0, offset - 1));
+        shiftRibbon("left");
         return;
       }
       if (key === ";") {
         event.preventDefault();
-        setRibbonOffset(offset => {
-          const maxOffset = Math.max(0, allPlaylists.length - RIBBON_KEYS.length);
-          return Math.min(maxOffset, offset + 1);
-        });
+        shiftRibbon("right");
         return;
       }
       const idx = RIBBON_KEYS.findIndex(k => k === key);
@@ -1104,9 +1351,9 @@ export default function ReviewStage({
     window.addEventListener("keydown", handleKey);
     return () => window.removeEventListener("keydown", handleKey);
   }, [
-    allPlaylists.length,
     confirmAdd,
     restartPlayback,
+    shiftRibbon,
     togglePlayback,
     togglePlaylistSelection,
     setAction,
@@ -1115,83 +1362,157 @@ export default function ReviewStage({
   ]);
 
   const renderRibbon = () => (
-    <div className="mx-auto w-full max-w-5xl rounded-[20px] bg-[#0d0d0d] p-4 text-white shadow-[0_20px_60px_rgba(0,0,0,0.35)]">
-      <div className="flex items-center gap-3">
-        <button
-          type="button"
-          onClick={() => setRibbonOffset(offset => Math.max(0, offset - 1))}
-          className="flex h-10 w-10 items-center justify-center rounded-full border border-zinc-700 text-sm text-zinc-300 transition hover:border-emerald-500 hover:text-emerald-200"
-        >
-          &lt;
-        </button>
-        <div className="flex flex-1 items-stretch gap-3 overflow-hidden">
-          {visiblePlaylists.map((p, idx) => {
-            const hotkey = RIBBON_KEYS[idx];
-            const selected = selectedPlaylists.has(p.id);
-            return (
-              <button
-                key={p.id}
-                type="button"
-                onClick={() => togglePlaylistSelection(p.id)}
-                className={clsx(
-                  "group relative flex min-w-[96px] max-w-[120px] flex-1 flex-col items-center justify-center gap-2 rounded-xl border border-transparent bg-black/40 px-3 py-3 text-xs transition hover:border-emerald-500/60 hover:bg-white/5",
-                  selected && "border-emerald-500 ring-2 ring-emerald-400/60",
-                )}
-              >
-                <span className="relative block h-14 w-14 overflow-hidden rounded-2xl bg-gradient-to-br from-zinc-700 to-zinc-900">
-                  {p.artworkUrl ? (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img
-                      src={p.artworkUrl}
-                      alt=""
-                      className="h-full w-full object-cover"
-                      loading="lazy"
-                    />
-                  ) : (
-                    <span
-                      className={clsx("block h-full w-full bg-gradient-to-br", randomGradient())}
-                    />
-                  )}
-                </span>
-                <span className="line-clamp-1 w-full text-center text-sm font-medium text-zinc-100">
-                  {p.name}
-                </span>
-                <span className="mt-1 flex items-center justify-center rounded-lg border border-zinc-700 px-2 py-1 text-[11px] uppercase tracking-wide text-zinc-200">
-                  {hotkey}
-                </span>
-              </button>
-            );
-          })}
+    <div className="w-full rounded-[20px] border border-[#141414] bg-[#121212] p-4 text-white shadow-[0_20px_60px_rgba(0,0,0,0.35)]">
+      <div className="flex items-stretch gap-3">
+        <div className="flex min-w-[52px] flex-col items-center justify-center gap-2">
+          <button
+            type="button"
+            onClick={() => shiftRibbon("left")}
+            disabled={!canScrollRibbonLeft}
+            className={clsx(
+              "flex h-9 w-9 items-center justify-center rounded-full border text-sm transition duration-200 active:scale-95",
+              canScrollRibbonLeft
+                ? "border-zinc-700 text-zinc-300 hover:border-emerald-500 hover:text-emerald-200"
+                : "cursor-not-allowed border-zinc-800 text-zinc-600",
+              ribbonMotionDirection === "left" &&
+                canScrollRibbonLeft &&
+                "border-emerald-500/80 bg-emerald-500/10 text-emerald-200 shadow-[0_0_0_6px_rgba(16,185,129,0.08)]",
+            )}
+          >
+            &lt;
+          </button>
+          <span className="flex items-center justify-center rounded-lg border border-zinc-700 px-2 py-1 text-[11px] uppercase tracking-wide text-zinc-200">
+            A
+          </span>
         </div>
-        <button
-          type="button"
-          onClick={() =>
-            setRibbonOffset(offset =>
-              Math.min(Math.max(0, allPlaylists.length - RIBBON_KEYS.length), offset + 1),
-            )
-          }
-          className="flex h-10 w-10 items-center justify-center rounded-full border border-zinc-700 text-sm text-zinc-300 transition hover:border-emerald-500 hover:text-emerald-200"
-        >
-          &gt;
-        </button>
-      </div>
-      <div className="mt-3 grid grid-cols-3 items-center text-[11px] uppercase tracking-[0.2em] text-zinc-500">
-        <span className="text-left">A / ; to scroll</span>
-        <span className="text-center" />
-        <span className="text-right">I to {isAddMode ? "Confirm" : "Add to Playlist"}</span>
+        <div className="relative min-w-0 flex-1">
+          {canScrollRibbonLeft ? (
+            <div className="pointer-events-none absolute inset-y-0 left-0 z-10 w-6 bg-gradient-to-r from-[#121212] via-[#121212]/85 to-transparent" />
+          ) : null}
+          {canScrollRibbonRight ? (
+            <div className="pointer-events-none absolute inset-y-0 right-0 z-10 w-6 bg-gradient-to-l from-[#121212] via-[#121212]/85 to-transparent" />
+          ) : null}
+          <div ref={railViewportRef} className="overflow-hidden">
+            <div
+              className="flex items-stretch gap-3 transition-transform duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] will-change-transform"
+              style={{
+                transform: `translate3d(-${ribbonTranslate}px, 0, 0)`,
+                width: ribbonTrackWidth ? `${ribbonTrackWidth}px` : undefined,
+              }}
+            >
+              {allPlaylists.map((p, idx) => {
+                const hotkeyIndex = idx - ribbonOffset;
+                const hotkey =
+                  hotkeyIndex >= 0 && hotkeyIndex < RIBBON_KEYS.length
+                    ? RIBBON_KEYS[hotkeyIndex]
+                    : null;
+                const isVisibleCard = hotkey !== null;
+                const isPeekCard =
+                  idx === ribbonOffset - 1 || idx === ribbonOffset + RIBBON_KEYS.length;
+                const selected = selectedPlaylists.has(p.id);
+                return (
+                  <button
+                    key={p.id}
+                    type="button"
+                    onClick={() => togglePlaylistSelection(p.id)}
+                    style={{
+                      width: `${ribbonCardWidth}px`,
+                      flex: `0 0 ${ribbonCardWidth}px`,
+                    }}
+                    className={clsx(
+                      "group relative flex min-h-[156px] min-w-0 flex-col items-center justify-center gap-1.5 rounded-xl border px-3 py-2.5 text-xs transition-[transform,opacity,border-color,background-color,box-shadow,filter] duration-300",
+                      selected
+                        ? "border-emerald-500 bg-[#1a1a1a] ring-2 ring-emerald-400/60"
+                        : "border-[#202020] bg-gradient-to-b from-[#1b1b1b] to-[#151515] hover:border-emerald-500/40 hover:bg-[#1a1a1a]",
+                      isVisibleCard
+                        ? "scale-100 opacity-100"
+                        : isPeekCard
+                          ? "scale-[0.985] opacity-70 saturate-75"
+                          : "scale-[0.97] opacity-45 saturate-50",
+                    )}
+                  >
+                    <span className="relative block h-14 w-14 overflow-hidden rounded-2xl border border-[#262626] bg-gradient-to-br from-zinc-700 to-zinc-900 shadow-[0_10px_24px_rgba(0,0,0,0.25)]">
+                      {p.artworkUrl ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img
+                          src={p.artworkUrl}
+                          alt=""
+                          className="h-full w-full object-cover"
+                          loading="lazy"
+                        />
+                      ) : (
+                        <span
+                          className="block h-full w-full"
+                          style={{ backgroundColor: getPlaceholderColor(p.id) }}
+                        />
+                      )}
+                    </span>
+                    <span className="flex min-h-[2rem] w-full items-center justify-center px-1 text-center text-[15px] font-medium leading-normal text-zinc-100">
+                      <span className="block w-full truncate">{p.name}</span>
+                    </span>
+                    <span
+                      className={clsx(
+                        "flex items-center justify-center rounded-lg border px-2 py-1 text-[11px] uppercase tracking-wide transition-colors duration-300",
+                        hotkey
+                          ? "border-zinc-700 text-zinc-200"
+                          : "border-transparent text-transparent",
+                      )}
+                    >
+                      {hotkey ?? " "}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+          {allPlaylists.length > RIBBON_KEYS.length ? (
+            <div className="mt-3 px-3">
+              <div className="h-[2px] rounded-full bg-white/[0.04]">
+                <div
+                  className="h-[2px] rounded-full bg-zinc-400/45 transition-transform duration-300 ease-[cubic-bezier(0.22,1,0.36,1)]"
+                  style={{
+                    width: `${ribbonScrollbarThumbWidth}px`,
+                    transform: `translate3d(${ribbonScrollbarThumbOffset}px, 0, 0)`,
+                  }}
+                />
+              </div>
+            </div>
+          ) : null}
+        </div>
+        <div className="flex min-w-[52px] flex-col items-center justify-center gap-2">
+          <button
+            type="button"
+            onClick={() => shiftRibbon("right")}
+            disabled={!canScrollRibbonRight}
+            className={clsx(
+              "flex h-9 w-9 items-center justify-center rounded-full border text-sm transition duration-200 active:scale-95",
+              canScrollRibbonRight
+                ? "border-zinc-700 text-zinc-300 hover:border-emerald-500 hover:text-emerald-200"
+                : "cursor-not-allowed border-zinc-800 text-zinc-600",
+              ribbonMotionDirection === "right" &&
+                canScrollRibbonRight &&
+                "border-emerald-500/80 bg-emerald-500/10 text-emerald-200 shadow-[0_0_0_6px_rgba(16,185,129,0.08)]",
+            )}
+          >
+            &gt;
+          </button>
+          <span className="flex items-center justify-center rounded-lg border border-zinc-700 px-2 py-1 text-[11px] uppercase tracking-wide text-zinc-200">
+            ;
+          </span>
+        </div>
       </div>
     </div>
   );
 
   const renderTrackCard = () => (
-    <div className="mx-auto flex w-full max-w-[320px] flex-col items-center gap-2 rounded-[24px] border border-zinc-800 bg-[#0d0d0d] px-5 py-5 text-white shadow-[0_20px_60px_rgba(0,0,0,0.35)]">
+    <div className="mx-auto flex w-full max-w-[288px] self-start flex-col items-center gap-1.5 rounded-[24px] border border-[#141414] bg-[#121212] px-3.5 py-3.5 text-white shadow-[0_20px_60px_rgba(0,0,0,0.35)]">
       {loading ? (
-        <div className="h-[280px] w-full rounded-2xl bg-gradient-to-br from-zinc-800 to-zinc-900" />
+        <div className="aspect-square w-full rounded-2xl bg-gradient-to-br from-zinc-800 to-zinc-900" />
       ) : error ? (
         <p className="text-sm text-amber-400">{error}</p>
       ) : currentTrack ? (
         <>
-          <div className="flex w-full items-center justify-between text-xs text-zinc-400">
+          <div className="flex w-full items-center justify-between text-[11px] text-zinc-400">
             <span>
               {queueData?.source.type === "playlist" ? queueData.source.name : "Liked Songs"}
             </span>
@@ -1199,13 +1520,13 @@ export default function ReviewStage({
               {activeIndex + 1}/{totalTracks}
             </span>
           </div>
-          <div className="relative h-72 w-full overflow-hidden rounded-2xl bg-gradient-to-br from-[#5b4de1] to-[#d32c8d]">
+          <div className="relative aspect-square w-full overflow-hidden rounded-2xl bg-[#0f0f0f]">
             {currentTrack.artworkUrl ? (
               // eslint-disable-next-line @next/next/no-img-element
               <img
                 src={currentTrack.artworkUrl}
                 alt=""
-                className="h-full w-full object-cover"
+                className="h-full w-full object-contain"
                 loading="lazy"
               />
             ) : (
@@ -1213,7 +1534,7 @@ export default function ReviewStage({
             )}
           </div>
           <div className="w-full space-y-1">
-            <p className="truncate text-lg font-semibold">{currentTrack.title}</p>
+            <p className="truncate text-base font-semibold">{currentTrack.title}</p>
             <p className="truncate text-sm text-zinc-400">{currentTrack.artists}</p>
           </div>
           <div className="flex w-full items-center gap-2">
@@ -1273,7 +1594,7 @@ export default function ReviewStage({
                 : "-0:00"}
             </span>
           </div>
-          <div className="flex w-full items-center justify-center gap-4 text-xs text-zinc-200">
+          <div className="flex w-full items-center justify-center gap-3 text-xs text-zinc-200">
             <button
               type="button"
               onClick={togglePlayback}
@@ -1305,13 +1626,19 @@ export default function ReviewStage({
   );
 
   const renderActions = () => (
-    <div className="min-w-[260px] rounded-[16px] border border-zinc-800 bg-[#0d0d0d] p-4 text-sm text-white shadow-[0_20px_60px_rgba(0,0,0,0.35)]">
+    <div className="w-full rounded-[16px] border border-[#141414] bg-[#121212] p-3.5 text-sm text-white shadow-[0_20px_60px_rgba(0,0,0,0.35)] lg:max-w-[272px]">
       <div className="space-y-2">
         <p className="text-xs uppercase tracking-[0.2em] text-zinc-500">Track History</p>
         <div className="h-px bg-zinc-800" />
-        <div className="min-h-[40px] text-xs text-zinc-400">{lastActionLabel}</div>
+        <div className="min-h-[40px] text-xs text-zinc-400">
+          {lastActionLabel.before}
+          {lastActionLabel.trackName ? (
+            <span className="font-semibold text-zinc-100">{lastActionLabel.trackName}</span>
+          ) : null}
+          {lastActionLabel.after ?? null}
+        </div>
       </div>
-      <div className="mt-4 space-y-2">
+      <div className="mt-3.5 space-y-2">
         <p className="text-xs uppercase tracking-[0.2em] text-zinc-500">Track Actions</p>
         <div className="h-px bg-zinc-800" />
         <div className="flex flex-wrap gap-2 text-xs">
@@ -1338,7 +1665,7 @@ export default function ReviewStage({
           </button>
         </div>
       </div>
-      <div className="mt-4 space-y-2">
+      <div className="mt-3.5 space-y-2">
         <p className="text-xs uppercase tracking-[0.2em] text-zinc-500">Playlist Actions</p>
         <div className="h-px bg-zinc-800" />
         <div className="flex flex-wrap gap-2 text-xs">
@@ -1363,7 +1690,7 @@ export default function ReviewStage({
         </div>
       </div>
       {onLoadMore && queueData?.nextOffset != null && (
-        <div className="mt-4 flex justify-center">
+        <div className="mt-3.5 flex justify-center">
           <button
             type="button"
             onClick={onLoadMore}
@@ -1378,54 +1705,16 @@ export default function ReviewStage({
   );
 
   return (
-    <div className="flex flex-col gap-6">
+    <div className="flex flex-col gap-3 lg:h-full lg:min-h-0 lg:overflow-hidden">
       {renderRibbon()}
-      <div className="grid gap-6 lg:grid-cols-[1fr_280px]">
+      <div className="grid items-start gap-3 lg:min-h-0 lg:flex-1 lg:grid-cols-[1fr_272px]">
         {renderTrackCard()}
         {renderActions()}
       </div>
-      <div className="flex justify-end">
+      <div className="flex justify-end lg:flex-none">
         <button
           type="button"
-          onClick={() => {
-            if (!queueData) return;
-            const removed = trackStates
-              .filter(t => t.action === "remove")
-              .map(t => ({
-                id: t.id,
-                title: t.title,
-                artists: t.artists,
-                artworkUrl: t.artworkUrl,
-              }));
-            const kept = trackStates
-              .filter(t => t.action === "keep")
-              .map(t => ({
-                id: t.id,
-                title: t.title,
-                artists: t.artists,
-                artworkUrl: t.artworkUrl,
-              }));
-            const addedIds = Object.keys(addCounts);
-            const added = trackStates
-              .filter(t => addedIds.includes(t.id))
-              .map(t => ({
-                id: t.id,
-                title: t.title,
-                artists: t.artists,
-                artworkUrl: t.artworkUrl,
-                addCount: addCounts[t.id],
-              }));
-            const pendingCount = trackStates.filter(t => t.action === "pending").length;
-            onFinish?.({
-              sessionId: reviewSessionId,
-              playlistTitle: playlistMeta.title,
-              artworkUrl: playlistMeta.artworkUrl,
-              removed,
-              kept,
-              added,
-              pendingCount,
-            });
-          }}
+          onClick={handleFinishReview}
           className="rounded-full border border-emerald-500 bg-emerald-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-emerald-500"
         >
           Finish
@@ -1491,6 +1780,37 @@ export default function ReviewStage({
                 className="rounded-full border border-emerald-500 bg-emerald-600 px-3 py-1 font-semibold text-white hover:bg-emerald-500"
               >
                 Resume
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {reviewCompletePrompt ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4">
+          <div className="w-full max-w-md rounded-2xl border border-zinc-800 bg-[#0d0d0d] p-6 text-white shadow-xl">
+            <h3 className="text-lg font-semibold">Review complete?</h3>
+            <p className="mt-2 text-sm text-zinc-400">
+              You just reviewed the last track in this playlist. Are you ready to move to the
+              confirm page?
+            </p>
+            <div className="mt-5 flex flex-wrap justify-end gap-2 text-sm">
+              <button
+                type="button"
+                onClick={() => setReviewCompletePrompt(false)}
+                className="rounded-full border border-zinc-700 px-3 py-1 text-zinc-300 hover:border-emerald-500 hover:text-emerald-200"
+              >
+                Stay here
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setReviewCompletePrompt(false);
+                  handleFinishReview();
+                }}
+                className="rounded-full border border-emerald-500 bg-emerald-600 px-3 py-1 font-semibold text-white hover:bg-emerald-500"
+              >
+                Go to confirm
               </button>
             </div>
           </div>

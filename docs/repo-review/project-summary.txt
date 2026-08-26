@@ -1,0 +1,83 @@
+Project: Spotify Playlist Manager
+
+Project Type:
+Full-stack playlist review and cleanup web application
+
+Project Summary:
+Spotify Playlist Manager is a keyboard-centric web app for reviewing large Spotify libraries and batching playlist decisions before one confirm step. Users can inspect playlists, review tracks quickly, queue keep/remove/add actions, create new target playlists during review, and then apply the resulting Spotify mutations in one controlled workflow.
+
+Core Stack:
+- Next.js App Router
+- React
+- TypeScript
+- Tailwind CSS
+- Prisma ORM
+- PostgreSQL
+- Spotify OAuth + Web API + Web Playback SDK
+
+Current Product State:
+- Left rail loads all playlists plus `Liked Songs`
+- Viewer mode shows playlist hero, track table, metadata, and incremental loading
+- Review mode supports keep/remove/undo, playlist targeting, new playlist targets, playback controls, and resumable review sessions
+- Summary mode shows removed / kept / added groups, confirm status, retry support, and confirm-attempt history
+- Confirm flow applies real Spotify writes for removals, playlist additions, liked-song removals, and review-created playlists
+
+Core Features:
+- Keyboard-driven playlist review workflow
+- Multi-stage viewer -> review -> summary product flow
+- Persistent review sessions with resume support
+- Batch confirm pipeline with chunked Spotify API writes
+- Partial-failure diagnostics and retry support
+- Post-confirm reconciliation against refreshed Spotify data
+- Playback support inside review mode
+
+Implementation Details:
+- The app stores review sessions, track actions, add targets, and confirm attempts in Prisma-backed tables
+- Spotify token refresh and stale-session handling are built into the auth/session layer
+- Confirm logic is failure-aware and avoids replaying successful work when retrying
+- Duplicate-add behavior is guarded so tracks are not re-added to target playlists by default
+- UI state and Spotify writes are coordinated through typed client/server flows
+
+Important Files:
+- `src/app/page.tsx`
+- `src/app/_components/workspace/workspace-shell.tsx`
+- `src/app/_components/review/review-stage.tsx`
+- `src/app/_components/review/review-summary.tsx`
+- `src/lib/spotify/api.ts`
+- `src/lib/db.ts`
+- `prisma/schema.prisma`
+
+Environment Note:
+The Postgres password contains a `$`, so `DATABASE_URL` should use URL encoding for that character.
+
+Example:
+`DATABASE_URL="postgresql://postgres:VUu%24MjU0E@localhost:5432/spotify_playlist_manager?schema=public"`
+
+Recent Technical Work Completed:
+- Migrated persistence to PostgreSQL
+- Added Prisma Postgres adapter runtime setup
+- Added confirm progress UI and partial-failure diagnostics
+- Added retry support for failed confirm actions
+- Added post-confirm reconciliation against Spotify data
+- Added confirm-attempt audit history
+- Improved review-stage layout and keyboard workflows
+- Added playlist rename/delete support
+- Added duplicate-add prevention by default
+
+Resume Entry - Short Version:
+Built a full-stack Spotify playlist review application with Next.js, TypeScript, Prisma, PostgreSQL, and Spotify APIs that lets users batch-review tracks, resume in-progress sessions, and apply playlist changes through a keyboard-driven workflow.
+
+Resume Bullet Options:
+- Developed a full-stack Spotify playlist management app using Next.js, TypeScript, Prisma, PostgreSQL, and Spotify APIs to support keyboard-centric batch review and cleanup workflows.
+- Implemented persistent review sessions, resumable state, and an audit-backed confirm pipeline with retry and reconciliation support for Spotify playlist mutations.
+- Built a multi-stage product flow with playlist viewing, interactive track review, playback integration, and summary reporting to make large playlist curation faster and more intentional.
+
+Interview Talking Points:
+- Why a session-backed review workflow is better than immediate per-track mutation
+- How the confirm pipeline handles partial failures and retries safely
+- How Prisma and PostgreSQL persist review state and confirm-attempt history
+- Tradeoffs involved in Spotify playback and token refresh within a long-lived review UI
+- How the product is optimized for keyboard efficiency and large-library cleanup
+
+Project Direction:
+The current priority is not deployment. The project is being shaped into a stronger portfolio/resume piece by improving product quality, UX clarity, technical depth, architecture, and documentation.

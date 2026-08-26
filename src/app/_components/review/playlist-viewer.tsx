@@ -11,6 +11,8 @@ type PlaylistMeta = {
   title: string;
   total: number;
   artworkUrl: string | null;
+  sourceType?: "liked" | "playlist";
+  canManage?: boolean;
 };
 
 type PlaylistViewerProps = {
@@ -22,6 +24,10 @@ type PlaylistViewerProps = {
   onReview?: () => void;
   onLoadMore?: () => void;
   loadingMore?: boolean;
+  onRenamePlaylist?: () => void;
+  onDeletePlaylist?: () => void;
+  renamingPlaylist?: boolean;
+  deletingPlaylist?: boolean;
 };
 
 const gradientPalette = [
@@ -35,6 +41,31 @@ const gradientPalette = [
 ];
 
 const getGradient = (index: number) => gradientPalette[index % gradientPalette.length];
+
+const PencilIcon = () => (
+  <svg viewBox="0 0 24 24" aria-hidden="true" className="h-4 w-4" fill="none" stroke="currentColor">
+    <path
+      d="M4 20h4l10-10a2.12 2.12 0 0 0-3-3L5 17v3Z"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      strokeWidth="1.8"
+    />
+    <path d="m13.5 6.5 4 4" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.8" />
+  </svg>
+);
+
+const TrashIcon = () => (
+  <svg viewBox="0 0 24 24" aria-hidden="true" className="h-4 w-4" fill="none" stroke="currentColor">
+    <path d="M3 6h18" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.8" />
+    <path
+      d="M8 6V4h8v2m-9 0 1 14h8l1-14"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      strokeWidth="1.8"
+    />
+    <path d="M10 11v5M14 11v5" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.8" />
+  </svg>
+);
 
 const TrackRow = ({
   track,
@@ -88,6 +119,10 @@ export default function PlaylistViewer({
   onReview,
   onLoadMore,
   loadingMore = false,
+  onRenamePlaylist,
+  onDeletePlaylist,
+  renamingPlaylist = false,
+  deletingPlaylist = false,
 }: PlaylistViewerProps) {
   const tracks = data?.tracks ?? [];
   const total = data?.total ?? meta.total;
@@ -98,8 +133,8 @@ export default function PlaylistViewer({
   }, [total, tracks.length]);
 
   return (
-    <div className="rounded-[28px] border border-black/50 bg-gradient-to-b from-[#1c1c1c] via-[#0f0f0f] to-[#070707] text-white shadow-[0_25px_80px_rgba(0,0,0,0.45)]">
-      <div className="flex flex-col gap-4 px-6 pb-6 pt-6 sm:flex-row sm:items-center sm:gap-6 sm:px-8 sm:pt-8">
+    <div className="rounded-[24px] border border-[#141414] bg-gradient-to-b from-[#1c1c1c] via-[#101010] to-[#0a0a0a] text-white shadow-[0_25px_80px_rgba(0,0,0,0.35)] lg:flex lg:h-full lg:min-h-0 lg:flex-col">
+      <div className="flex flex-col gap-4 px-5 pb-5 pt-5 sm:flex-row sm:items-center sm:gap-6 sm:px-6 sm:pt-6 lg:flex-none">
         <div className="relative h-28 w-28 overflow-hidden rounded-2xl bg-gradient-to-br from-emerald-500 to-teal-400 shadow-lg">
           {meta.artworkUrl ? (
             <Image
@@ -133,24 +168,49 @@ export default function PlaylistViewer({
                 {loadingMore ? "Loading more..." : "Load more"}
               </button>
             )}
+            {meta.sourceType === "playlist" && meta.canManage ? (
+              <>
+                <button
+                  type="button"
+                  onClick={onRenamePlaylist}
+                  disabled={renamingPlaylist || deletingPlaylist}
+                  className="inline-flex items-center gap-2 rounded-full border border-zinc-700 bg-black/20 px-4 py-2 text-sm font-semibold text-zinc-200 transition hover:border-emerald-500 hover:text-emerald-200 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  <PencilIcon />
+                  {renamingPlaylist ? "Renaming..." : "Rename"}
+                </button>
+                <button
+                  type="button"
+                  onClick={onDeletePlaylist}
+                  disabled={deletingPlaylist || renamingPlaylist}
+                  className="inline-flex items-center gap-2 rounded-full border border-zinc-700 bg-black/20 px-4 py-2 text-sm font-semibold text-zinc-200 transition hover:border-rose-500 hover:text-rose-300 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  <TrashIcon />
+                  {deletingPlaylist ? "Deleting..." : "Delete"}
+                </button>
+              </>
+            ) : null}
           </div>
         </div>
       </div>
 
       {notice ? (
-        <div className="mx-6 mb-4 rounded-2xl border border-sky-500/30 bg-sky-500/10 px-4 py-3 text-sm text-sky-200 sm:mx-8">
+        <div className="mx-5 mb-4 rounded-2xl border border-sky-500/30 bg-sky-500/10 px-4 py-3 text-sm text-sky-200 sm:mx-6 lg:flex-none">
           {notice}
         </div>
       ) : null}
 
-      <div className="overflow-hidden rounded-[28px] border-t border-white/5 bg-black/40">
+      <div className="overflow-hidden rounded-[24px] border-t border-white/5 bg-black/40 lg:flex lg:min-h-0 lg:flex-1 lg:flex-col">
         <div className="grid grid-cols-[40px_minmax(0,1fr)_minmax(0,1fr)_80px] items-center gap-4 px-3 py-2 text-[11px] uppercase tracking-wide text-zinc-500">
           <span className="text-center">#</span>
           <span>Title</span>
           <span>Album</span>
           <span className="text-right">Duration</span>
         </div>
-        <ul role="rowgroup" className="divide-y divide-zinc-800/60">
+        <ul
+          role="rowgroup"
+          className="divide-y divide-zinc-800/60 lg:min-h-0 lg:flex-1 lg:overflow-y-auto"
+        >
           {loading ? (
             <li className="px-3 py-6 text-center text-sm text-zinc-400">Loading tracks…</li>
           ) : error ? (
@@ -162,7 +222,7 @@ export default function PlaylistViewer({
           ) : (
             tracks.map((track, idx) => (
               <TrackRow
-                key={track.id ?? `${track.title}-${idx}`}
+                key={`${track.id}-${track.addedAt}-${(data?.offset ?? 0) + idx}`}
                 track={track}
                 index={(data?.offset ?? 0) + idx + 1}
                 artworkFallbackIndex={idx}

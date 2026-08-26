@@ -66,6 +66,9 @@ export default function WorkspaceShell({
   spotifyUser,
 }: WorkspaceShellProps) {
   const router = useRouter();
+  const [playlistRailState, setPlaylistRailState] = useState<PlaylistRailData | null>(
+    playlistRailData,
+  );
   const [queueData, setQueueData] = useState<QueueData | null>(initialQueueData);
   const [queueError, setQueueError] = useState<string | null>(initialQueueError);
   const [queueNotice, setQueueNotice] = useState<string | null>(null);
@@ -86,27 +89,74 @@ export default function WorkspaceShell({
   const [confirmFailures, setConfirmFailures] = useState<ConfirmApiPayload["failures"]>([]);
   const [confirmAttempts, setConfirmAttempts] = useState<ConfirmAttemptHistoryItem[]>([]);
   const [confirmAttemptsLoading, setConfirmAttemptsLoading] = useState(false);
+  const [renamingPlaylistId, setRenamingPlaylistId] = useState<string | null>(null);
+  const [deletingPlaylistId, setDeletingPlaylistId] = useState<string | null>(null);
   const [selectedMeta, setSelectedMeta] = useState<{
     title: string;
     total: number;
     artworkUrl: string | null;
+    sourceType: "liked" | "playlist";
+    canManage: boolean;
   }>(() => ({
     title:
       initialQueueData?.source.type === "playlist"
         ? (initialQueueData.source.name ?? "Playlist")
         : "Liked Songs",
-    total: initialQueueData?.total ?? playlistRailData?.likedSongs?.total ?? 0,
+    total: initialQueueData?.total ?? playlistRailState?.likedSongs?.total ?? 0,
     artworkUrl:
       initialQueueData?.source.type === "playlist"
-        ? (playlistRailData?.playlists.find(p => p.id === initialQueueData.source.id)?.images?.[0]
-            ?.url ?? null)
-        : (playlistRailData?.likedSongs?.artwork?.url ?? null),
+        ? (playlistRailState?.playlists.find(
+            p =>
+              p.id ===
+              (initialQueueData.source.type === "playlist" ? initialQueueData.source.id : ""),
+          )?.images?.[0]?.url ?? null)
+        : (playlistRailState?.likedSongs?.artwork?.url ?? null),
+    sourceType: initialQueueData?.source.type === "playlist" ? "playlist" : "liked",
+    canManage:
+      initialQueueData?.source.type === "playlist"
+        ? playlistRailState?.playlists.find(
+            p =>
+              p.id ===
+              (initialQueueData.source.type === "playlist" ? initialQueueData.source.id : ""),
+          )?.ownerId === spotifyUser?.spotifyId
+        : false,
   }));
+
+  useEffect(() => {
+    setPlaylistRailState(playlistRailData);
+  }, [playlistRailData]);
+
+  const sortedPlaylistRailState = useMemo(() => {
+    if (!playlistRailState) return null;
+
+    const collator = new Intl.Collator(undefined, {
+      sensitivity: "base",
+      numeric: true,
+    });
+
+    const playlists = [...playlistRailState.playlists].sort((a, b) => {
+      const aOwned = a.ownerId === spotifyUser?.spotifyId;
+      const bOwned = b.ownerId === spotifyUser?.spotifyId;
+
+      if (aOwned !== bOwned) {
+        return aOwned ? -1 : 1;
+      }
+
+      return collator.compare(a.name, b.name);
+    });
+
+    return {
+      ...playlistRailState,
+      playlists,
+    };
+  }, [playlistRailState, spotifyUser?.spotifyId]);
 
   const activeId = useMemo(() => {
     if (queueData?.source.type === "playlist") return queueData.source.id;
     return "liked-songs";
   }, [queueData]);
+
+  const activePlaylistSource = queueData?.source.type === "playlist" ? queueData.source : null;
 
   const redirectToLogin = useCallback(() => {
     window.location.assign("/api/auth/login");
@@ -153,7 +203,32 @@ export default function WorkspaceShell({
         return;
       }
 
+      const refreshedPlaylistId =
+        refreshedQueue.source.type === "playlist" ? refreshedQueue.source.id : null;
+
       setQueueData(refreshedQueue);
+      setPlaylistRailState(prev => {
+        if (!prev) return prev;
+
+        if (refreshedPlaylistId) {
+          return {
+            ...prev,
+            playlists: prev.playlists.map(playlist =>
+              playlist.id === refreshedPlaylistId
+                ? { ...playlist, totalTracks: refreshedQueue.total }
+                : playlist,
+            ),
+          };
+        }
+
+        return {
+          ...prev,
+          likedSongs: {
+            ...prev.likedSongs,
+            total: refreshedQueue.total,
+          },
+        };
+      });
       setSelectedMeta(prev => ({
         ...prev,
         total: refreshedQueue.total,
@@ -207,7 +282,7 @@ export default function WorkspaceShell({
 
   const handleSelect = useCallback(
     async (item: { id: string; name: string; type: "liked" | "playlist" }) => {
-      if (!playlistRailData) return;
+      if (!sortedPlaylistRailState) return;
 
       const nextSource: QueueSource =
         item.type === "liked"
@@ -227,15 +302,19 @@ export default function WorkspaceShell({
         item.type === "liked"
           ? {
               title: "Liked Songs",
-              total: playlistRailData?.likedSongs?.total ?? 0,
-              artworkUrl: playlistRailData?.likedSongs?.artwork?.url ?? null,
+              total: sortedPlaylistRailState?.likedSongs?.total ?? 0,
+              artworkUrl: sortedPlaylistRailState?.likedSongs?.artwork?.url ?? null,
+              sourceType: "liked" as const,
+              canManage: false,
             }
           : (() => {
-              const found = playlistRailData?.playlists.find(p => p.id === item.id);
+              const found = sortedPlaylistRailState?.playlists.find(p => p.id === item.id);
               return {
                 title: item.name,
                 total: found?.totalTracks ?? 0,
                 artworkUrl: found?.images?.[0]?.url ?? null,
+                sourceType: "playlist" as const,
+                canManage: found?.ownerId === spotifyUser?.spotifyId,
               };
             })();
       setSelectedMeta(playlistMeta);
@@ -253,7 +332,7 @@ export default function WorkspaceShell({
         setLoading(false);
       }
     },
-    [fetchSourceQueue, playlistRailData],
+    [fetchSourceQueue, sortedPlaylistRailState, spotifyUser?.spotifyId],
   );
 
   const handleLoadMore = useCallback(async () => {
@@ -286,6 +365,148 @@ export default function WorkspaceShell({
       setLoadingMore(false);
     }
   }, [fetchSourceQueue, queueData, loadingMore]);
+
+  const handleDeletePlaylist = useCallback(
+    async (item: {
+      type: "playlist";
+      id: string;
+      name: string;
+      subtitle: string;
+      artworkUrl: string | null;
+      meta: {
+        totalTracks: number;
+        ownerId: string;
+        ownerName?: string | null;
+        isCollaborative: boolean;
+      };
+    }) => {
+      if (item.meta.ownerId !== spotifyUser?.spotifyId) return;
+
+      const confirmed = window.confirm(
+        `Remove "${item.name}" from your Spotify playlists? This will not remove tracks from your library or other playlists.`,
+      );
+      if (!confirmed) return;
+
+      setDeletingPlaylistId(item.id);
+      setQueueError(null);
+
+      try {
+        const response = await fetch(`/api/playlists/${item.id}`, {
+          method: "DELETE",
+        });
+        const body = await response.json().catch(() => ({}));
+
+        if (!response.ok) {
+          if (response.status === 401) {
+            redirectToLogin();
+            return;
+          }
+          throw new Error(body?.error || "Failed to delete playlist.");
+        }
+
+        setPlaylistRailState(prev =>
+          prev
+            ? {
+                ...prev,
+                playlists: prev.playlists.filter(playlist => playlist.id !== item.id),
+              }
+            : prev,
+        );
+
+        if (queueData?.source.type === "playlist" && queueData.source.id === item.id) {
+          await handleSelect({ id: "liked-songs", name: "Liked Songs", type: "liked" });
+        }
+
+        setQueueNotice(`Removed "${item.name}" from your Spotify playlists.`);
+      } catch (error) {
+        console.error("Failed to delete playlist:", error);
+        setQueueError(error instanceof Error ? error.message : "Failed to delete playlist.");
+      } finally {
+        setDeletingPlaylistId(null);
+      }
+    },
+    [handleSelect, queueData?.source, redirectToLogin, spotifyUser?.spotifyId],
+  );
+
+  const handleRenamePlaylist = useCallback(
+    async (item: {
+      type: "playlist";
+      id: string;
+      name: string;
+      subtitle: string;
+      artworkUrl: string | null;
+      meta: {
+        totalTracks: number;
+        ownerId: string;
+        ownerName?: string | null;
+        isCollaborative: boolean;
+      };
+    }) => {
+      if (item.meta.ownerId !== spotifyUser?.spotifyId) return;
+
+      const nextName = window.prompt("Rename playlist", item.name)?.trim();
+      if (!nextName || nextName === item.name) return;
+
+      setRenamingPlaylistId(item.id);
+      setQueueError(null);
+
+      try {
+        const response = await fetch(`/api/playlists/${item.id}`, {
+          method: "PATCH",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ name: nextName }),
+        });
+        const body = await response.json().catch(() => ({}));
+
+        if (!response.ok) {
+          if (response.status === 401) {
+            redirectToLogin();
+            return;
+          }
+          throw new Error(body?.error || "Failed to rename playlist.");
+        }
+
+        setPlaylistRailState(prev =>
+          prev
+            ? {
+                ...prev,
+                playlists: prev.playlists.map(playlist =>
+                  playlist.id === item.id ? { ...playlist, name: nextName } : playlist,
+                ),
+              }
+            : prev,
+        );
+
+        if (queueData?.source.type === "playlist" && queueData.source.id === item.id) {
+          setQueueData(prev =>
+            prev?.source.type === "playlist" && prev.source.id === item.id
+              ? {
+                  ...prev,
+                  source: {
+                    ...prev.source,
+                    name: nextName,
+                  },
+                }
+              : prev,
+          );
+          setSelectedMeta(prev => ({
+            ...prev,
+            title: nextName,
+          }));
+        }
+
+        setQueueNotice(`Renamed playlist to "${nextName}".`);
+      } catch (error) {
+        console.error("Failed to rename playlist:", error);
+        setQueueError(error instanceof Error ? error.message : "Failed to rename playlist.");
+      } finally {
+        setRenamingPlaylistId(null);
+      }
+    },
+    [queueData?.source, redirectToLogin, spotifyUser?.spotifyId],
+  );
 
   const submitConfirm = useCallback(
     async (retryFailures?: ConfirmApiPayload["failures"]) => {
@@ -350,6 +571,22 @@ export default function WorkspaceShell({
 
         setConfirmStage("Finalizing session");
         await reconcileCurrentSource(body.removed.applied);
+        if (summaryData.playlistAdditions.length > 0) {
+          const playlistAdditionMap = new Map(
+            summaryData.playlistAdditions.map(entry => [entry.playlistId, entry.count]),
+          );
+          setPlaylistRailState(prev =>
+            prev
+              ? {
+                  ...prev,
+                  playlists: prev.playlists.map(playlist => ({
+                    ...playlist,
+                    totalTracks: playlist.totalTracks + (playlistAdditionMap.get(playlist.id) ?? 0),
+                  })),
+                }
+              : prev,
+          );
+        }
         setConfirmStatus("success");
         setConfirmErrorMessage(null);
         setConfirmFailures([]);
@@ -393,26 +630,33 @@ export default function WorkspaceShell({
     <div
       className={
         mode === "summary"
-          ? "mt-6 flex w-full justify-center"
-          : "mt-6 grid gap-5 lg:grid-cols-[280px_1fr]"
+          ? "mt-2 flex w-full justify-center lg:min-h-0 lg:flex-1 lg:overflow-y-auto"
+          : "mt-2 grid gap-2 lg:min-h-0 lg:flex-1 lg:grid-cols-[300px_minmax(0,1fr)]"
       }
     >
       {mode !== "summary" && (
-        <div className="self-start lg:sticky lg:top-24 lg:w-[260px]" style={{ maxHeight: "80vh" }}>
+        <div className="self-start lg:h-full lg:min-h-0 lg:w-[300px]">
           <PlaylistRailClient
             data={
-              playlistRailData ?? {
+              sortedPlaylistRailState ?? {
                 likedSongs: { total: 0, artwork: null },
                 playlists: [],
               }
             }
             appearance="workspace"
             activeId={activeId}
+            currentSpotifyUserId={spotifyUser?.spotifyId ?? null}
             onSelect={item => handleSelect({ ...item, name: item.name })}
           />
         </div>
       )}
-      <div className={mode === "summary" ? "w-full max-w-6xl" : "flex flex-col gap-3"}>
+      <div
+        className={
+          mode === "summary"
+            ? "w-full max-w-6xl"
+            : "flex flex-col gap-2 lg:min-h-0 lg:overflow-y-auto"
+        }
+      >
         {mode === "view" ? (
           <PlaylistViewer
             data={loading ? null : queueData}
@@ -423,11 +667,59 @@ export default function WorkspaceShell({
             onReview={() => setMode("review")}
             onLoadMore={queueData?.nextOffset != null ? handleLoadMore : undefined}
             loadingMore={loadingMore}
+            onRenamePlaylist={
+              selectedMeta.sourceType === "playlist" &&
+              selectedMeta.canManage &&
+              activePlaylistSource
+                ? () =>
+                    void handleRenamePlaylist({
+                      type: "playlist",
+                      id: activePlaylistSource.id,
+                      name: selectedMeta.title,
+                      subtitle: `${selectedMeta.total} tracks`,
+                      artworkUrl: selectedMeta.artworkUrl,
+                      meta: {
+                        totalTracks: selectedMeta.total,
+                        ownerId: spotifyUser?.spotifyId ?? "",
+                        ownerName: spotifyUser?.displayName ?? null,
+                        isCollaborative: false,
+                      },
+                    })
+                : undefined
+            }
+            onDeletePlaylist={
+              selectedMeta.sourceType === "playlist" &&
+              selectedMeta.canManage &&
+              activePlaylistSource
+                ? () =>
+                    void handleDeletePlaylist({
+                      type: "playlist",
+                      id: activePlaylistSource.id,
+                      name: selectedMeta.title,
+                      subtitle: `${selectedMeta.total} tracks`,
+                      artworkUrl: selectedMeta.artworkUrl,
+                      meta: {
+                        totalTracks: selectedMeta.total,
+                        ownerId: spotifyUser?.spotifyId ?? "",
+                        ownerName: spotifyUser?.displayName ?? null,
+                        isCollaborative: false,
+                      },
+                    })
+                : undefined
+            }
+            renamingPlaylist={
+              renamingPlaylistId ===
+              (queueData?.source.type === "playlist" ? queueData.source.id : null)
+            }
+            deletingPlaylist={
+              deletingPlaylistId ===
+              (queueData?.source.type === "playlist" ? queueData.source.id : null)
+            }
           />
         ) : mode === "review" ? (
           <ReviewStage
             key={reviewSessionKey}
-            playlistRailData={playlistRailData}
+            playlistRailData={sortedPlaylistRailState}
             queueData={loading ? null : queueData}
             loading={loading}
             error={queueError}

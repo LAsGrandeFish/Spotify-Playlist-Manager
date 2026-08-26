@@ -31,7 +31,7 @@ export type SpotifyPlaylist = {
   id: string;
   name: string;
   description?: string | null;
-  images: SpotifyImage[];
+  images: SpotifyImage[] | null;
   tracks: {
     total: number;
   };
@@ -252,6 +252,48 @@ export const removeTracksFromLibrary = async (accessToken: string, trackIds: str
   if (response.status === 401) {
     throw new Error("Spotify access token expired or revoked.");
   }
+  if (!response.ok) {
+    const errorBody = await response.text();
+    throw new Error(`Spotify API error (${response.status}): ${errorBody}`);
+  }
+};
+
+export const unfollowPlaylist = async (accessToken: string, playlistId: string) => {
+  const response = await fetch(`${SPOTIFY_API_BASE_URL}/playlists/${playlistId}/followers`, {
+    method: "DELETE",
+    headers: withAccessToken(accessToken),
+  });
+
+  if (response.status === 401) {
+    throw new Error("Spotify access token expired or revoked.");
+  }
+
+  if (!response.ok) {
+    const errorBody = await response.text();
+    throw new Error(`Spotify API error (${response.status}): ${errorBody}`);
+  }
+};
+
+export const updatePlaylistDetails = async (
+  accessToken: string,
+  playlistId: string,
+  payload: {
+    name?: string;
+    description?: string | null;
+    public?: boolean;
+    collaborative?: boolean;
+  },
+) => {
+  const response = await fetch(`${SPOTIFY_API_BASE_URL}/playlists/${playlistId}`, {
+    method: "PUT",
+    headers: withAccessToken(accessToken),
+    body: JSON.stringify(payload),
+  });
+
+  if (response.status === 401) {
+    throw new Error("Spotify access token expired or revoked.");
+  }
+
   if (!response.ok) {
     const errorBody = await response.text();
     throw new Error(`Spotify API error (${response.status}): ${errorBody}`);
